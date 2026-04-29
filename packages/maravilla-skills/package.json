@@ -1,0 +1,13 @@
+{
+  "name": "@maravilla-labs/skills",
+  "version": "0.1.0",
+  "description": "AI agent skills for Maravilla Cloud — installable via `npx skills add`.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maravilla-labs/maravilla-cli.git",
+    "directory": "packages/maravilla-skills"
+  },
+  "files": ["skills"],
+  "keywords": ["maravilla", "skills", "ai", "agents", "claude-code", "cursor"]
+}
