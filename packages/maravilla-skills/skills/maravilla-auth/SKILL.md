@@ -227,19 +227,13 @@ These bypass the normal user-facing endpoint and require the caller to be admin 
 
 ## `AuthUser` shape
 
-```typescript
-interface AuthUser {
-  id: string;                    // "usr_..."
-  email: string;
-  email_verified: boolean;
-  status: 'active' | 'suspended' | 'deactivated';
-  provider: string;              // "email" | "google" | "github" | ...
-  groups: string[];              // group IDs
-  created_at: number;            // unix seconds
-  updated_at: number;
-  last_login_at?: number;
-}
-```
+`AuthUser` is exported from `@maravilla-labs/platform` — `import type { AuthUser } from '@maravilla-labs/platform'`. Notes worth knowing without opening the file:
+
+- `id` is `"usr_..."` (nanoid-prefixed).
+- `status` is `'active' | 'suspended' | 'deactivated'`. Suspended users still authenticate but most policies should reject them — check explicitly.
+- `provider` is the auth provider key (`"email"`, `"google"`, etc.) — match strings, not booleans.
+- `groups` carries group IDs, not names — use `platform.policy` predicates rather than string-matching.
+- `created_at` / `updated_at` / `last_login_at` are unix seconds (not ms).
 
 ## Common pitfalls
 

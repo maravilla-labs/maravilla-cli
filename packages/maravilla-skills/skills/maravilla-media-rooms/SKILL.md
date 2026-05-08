@@ -21,41 +21,22 @@ if (!platform.media) {
 
 ## Surface
 
-```ts
-interface MediaService {
-  createRoom(roomId: string, settings?: MediaRoomInfoSettings): Promise<MediaRoomInfo>;
-  deleteRoom(roomId: string): Promise<void>;
-  listRooms(): Promise<MediaRoomInfo[]>;
-  generateToken(roomId: string, participant: MediaParticipantInfo): Promise<MediaTokenResult>;
-  mediaUrl(): Promise<string | null>;
-}
+`MediaService`, `MediaRoomInfo`, `MediaRoomInfoSettings`, `MediaParticipantInfo`, `MediaTokenResult` are exported from `@maravilla-labs/platform` — import the types and let the IDE / `tsc` resolve. Method list:
 
-interface MediaRoomInfo {
-  name: string;
-  numParticipants: number;
-  maxParticipants: number;
-  createdAt: number;
-  active: boolean;
-}
+| Method | Returns |
+|---|---|
+| `createRoom(roomId, settings?)` | `MediaRoomInfo` — idempotent; returns the existing room if `roomId` already exists |
+| `deleteRoom(roomId)` | `void` |
+| `listRooms()` | `MediaRoomInfo[]` |
+| `generateToken(roomId, participant)` | `MediaTokenResult` — `{ token, url }` |
+| `mediaUrl()` | `string \| null` — `null` means "no LiveKit URL configured" |
 
-interface MediaRoomInfoSettings {
-  maxParticipants?: number;
-  emptyTimeoutSecs?: number;     // server tears the room down when empty for this long
-}
+Notes worth knowing without opening the file:
 
-interface MediaParticipantInfo {
-  identity: string;              // unique per participant — use the user_id
-  name: string;                  // display name shown to other participants
-  canPublish?: boolean;          // default true
-  canSubscribe?: boolean;        // default true
-  canPublishData?: boolean;      // default true
-}
-
-interface MediaTokenResult {
-  token: string;                 // JWT — pass to LiveKit client; expires
-  url: string;                   // LiveKit server URL — same as mediaUrl()
-}
-```
+- `MediaParticipantInfo.identity` MUST be unique within a room. A second connect with the same identity boots the prior session — use `user_id` for single-tab, append a nonce (`${user_id}#${tabId}`) for multi-tab.
+- `canPublish` / `canSubscribe` / `canPublishData` all default to `true`. Set explicitly if you need a listener-only role.
+- `MediaRoomInfoSettings.emptyTimeoutSecs` is server-side; 60–300 is the usual range. Short = clean rooms, breaks "BRB" UX.
+- `MediaTokenResult.token` is a JWT with an embedded TTL (~6h server default). Re-issue on rejoin; don't cache past the page lifetime.
 
 ## Pattern: idempotent room creation + per-user token
 
