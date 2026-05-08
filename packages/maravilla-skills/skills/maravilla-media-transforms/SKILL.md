@@ -51,7 +51,8 @@ The full method surface is exported from `@maravilla-labs/platform` — import t
 | Group | Methods |
 |---|---|
 | Media | `transcode` · `thumbnail` · `resize` · `probe` · `ocr` |
-| Documents | `docToPdf` · `docThumbnail` · `docConvert` · `docToMarkdown` · `docToHtml` · `docReplaceImages` · `docInsertQrCode` |
+| Documents | `docToPdf` · `docThumbnail` · `docConvert` · `docToMarkdown` · `docToHtml` |
+| Document templating | **`docTemplateMerge`** (text + images + QR in one render — preferred) · `docReplaceImages` (images only) · `docInsertQrCode` (QR only) |
 | Status | `job(id)` |
 
 `probe` returns a `MediaInfo` synchronously. Everything else returns a `JobHandle` and runs in the background.
@@ -103,41 +104,47 @@ All `*Opts` types and `JobHandle` / `JobStatusResponse` / `MediaInfo` ship from 
 | "Every upload to `prefix/X` gets these N renditions" | Declarative `transforms` block |
 | "User clicked _Generate alternative encoding_" | Imperative `transforms.transcode` from a route |
 | "Every uploaded contract auto-renders a PDF preview" | Imperative `docToPdf` from an `onStorage` handler |
-| "Render this template for THIS user with their logo" | Imperative `docReplaceImages` from a route — placeholders and/or named objects |
+| "Render this template for THIS user with name + logo + QR backlink" | Imperative `docTemplateMerge` — single call, all substitution kinds in one render |
+| "Render this template with ONLY images, no text or QR" | Imperative `docReplaceImages` from a route — placeholders and/or named objects |
 | Re-derive after a spec change | Imperative — write a one-off script that lists the prefix and calls the transform per object |
 | Probe before deciding what to do | `transforms.probe(srcKey)` — synchronous, returns dimensions/duration/codecs |
 | Cancel an in-flight job | Not supported v1. Job will run to completion or failure. |
 
-## Document templating: image replacement + QR
+## Document templating: text + image + QR in one call
 
-Two design choices when filling a `.docx` / `.odt` / `.pptx` template:
+The headline templating job is `docTemplateMerge` — text substitution + image swap + QR injection in one render. Use it whenever a template needs more than one substitution kind. `docReplaceImages` and `docInsertQrCode` remain available for the narrower images-only and QR-only cases.
+
+Two design choices when targeting a swap (applies to both `docTemplateMerge` and the standalone methods):
 
 | Strategy | When to use | What's preserved |
 |---|---|---|
 | **Placeholder text-tag** (`'{{LOGO}}'`) | User types a tag in their template. Matches the literal string. Simplest UX. | Image lands at the matched position; you can't easily preset frame size, border, or wrap |
 | **Named object** | Template author drops a dummy image and names it (Word: Format → Anchor → Properties → Name). | The original frame's exact size, border, anchor type, and text-wrap settings — the new image just "fills" the existing frame |
 
-`docReplaceImages` accepts BOTH in one call — most realistic templates mix the two. `docInsertQrCode` reuses the same placeholder/named-object anchor mechanism but generates the PNG bytes server-side from a payload string, so the caller doesn't have to upload an image first.
+`docTemplateMerge` accepts BOTH placeholder and named-object swaps in the same call, plus arbitrary text replacements (`'{{NAME}}' -> 'Acme Corp'`) and server-generated QR codes via the same placeholder mechanism.
 
 ```ts
-// Generate a per-invoice PDF: brand logo (named object) + per-row data (placeholders)
-// + a backlink QR (placeholder).
-await Promise.all([
-  platform.media!.transforms.docReplaceImages(`templates/invoice.docx`, {
-    output_format: 'pdf',
-    namedObjects: { 'BrandLogo': { src_key: 'brand/logo.png' } },
-    placeholders: { '{{CUSTOMER_LOGO}}': { src_key: customerLogoKey } },
-  }),
-  platform.media!.transforms.docInsertQrCode(`templates/invoice.docx`, {
-    output_format: 'pdf',
-    codes: [{
-      placeholder: '{{QR_BACKLINK}}',
+// Generate a per-invoice PDF: customer name + customer logo + brand logo
+// + payment QR — all in ONE call, ONE server-side render.
+await platform.media!.transforms.docTemplateMerge('templates/invoice.docx', {
+  output_format: 'pdf',
+  data: {
+    '{{CUSTOMER_NAME}}': 'Acme Corp',
+    '{{INVOICE_ID}}':    `#${invoiceId}`,
+    '{{TOTAL}}':         '€ 1,234.56',
+  },
+  images: { '{{CUSTOMER_LOGO}}': { src_key: customerLogoKey } },
+  named_objects: { 'BrandLogo': { src_key: 'brand/logo.png' } },
+  qr_codes: {
+    '{{PAYMENT_QR}}': {
       payload: `https://app.example.com/invoice/${invoiceId}`,
       size: 256,
-    }],
-  }),
-]);
+    },
+  },
+});
 ```
+
+The composition trap (don't do this): calling `docReplaceImages` then `docInsertQrCode` on the same template spawns soffice twice. `docTemplateMerge` does the same outcome in one daemon — ~3× the throughput.
 
 ## Status & retries
 
@@ -157,6 +164,9 @@ await Promise.all([
 - **`docInsertQrCode` payload limit is 1500 bytes.** Larger payloads encode but produce a QR too dense to scan reliably — the platform rejects them up front.
 - **Document outputs preserve the input format unless `output_format` is set** on `docReplaceImages` / `docInsertQrCode`. Render to PDF if you don't want the user receiving an editable .docx of their own template back.
 - **`docToHtml` is the right pick for email rendering and iframe embedding** because the output is one self-contained file — no sidecar assets, no broken images. `docConvert(to: 'html')` exists too but produces multi-file HTML; use `docToHtml` for the single-file case.
+- **`docTemplateMerge` is the default for any templating that needs more than one substitution kind.** Composing `docReplaceImages` + `docInsertQrCode` works but doubles the soffice cold-start cost. Reach for the standalone methods only when you genuinely have just images, or just QR.
+- **`docTemplateMerge.data` does verbatim string replacement** — there's no template engine (no `{{#if}}`, no loops, no expressions). Tags are matched literally; choose a delimiter style you don't expect to appear in real document content (`'{{TAG}}'` or `'<<TAG>>'`).
+- **Per-row mail merge (one template → many output PDFs from a CSV) is a CALLER-SIDE LOOP.** `docTemplateMerge` takes ONE substitution map per call. For bulk render, iterate in a workflow or event handler.
 
 ## See also
 
