@@ -61,6 +61,24 @@ If you wire anything user-facing, **read [maravilla-auth](../maravilla-auth/SKIL
 
 Skipping step 2 silently makes the request anonymous. Owner-scoped policies (`auth.user_id == node.owner`) then return zero rows and the UI looks "broken" with no error.
 
+## Pitfalls that bite — read before writing auth/policy code
+
+The list below is the set of silent-killer bugs we hit while building real apps on Maravilla. Each is documented in depth in its dedicated skill; this section is the index so an agent picking up an auth or policy task knows what to watch for **before** producing code.
+
+1. **`auth.is_admin` is dead.** Use `auth.groups.contains("admin")` in policies. `auth.is_admin` is hardcoded `false` in dev-server and inconsistent in production. → [maravilla-policies](../maravilla-policies/SKILL.md), [maravilla-auth](../maravilla-auth/SKILL.md).
+2. **`user.groups` is IDs, `auth.groups` is names.** `AuthUser.groups` (JS) carries `grp_…` IDs; `auth.groups` (policy DSL) carries names. `user.groups.includes("admin")` is always false. For JS-side admin checks use `getUserGroups(user.id)` and check `g.name === 'admin'`.
+3. **`addUserToGroup` takes a group_id, not a name.** Resolve via `getGroupByName('admin')` first. The auth-settings reconciler creates declared groups at deploy time, so by-name lookup is reliable for anything in `maravilla.config.ts::groups`.
+4. **Action vocab differs per service.** `node.action` is `"read"/"write"/"delete"/"list"` for KV/DB but `"get"/"put"/"delete"/"list"/"get-metadata"/"upload-url"/"download-url"/"confirm"` for Storage. Mixing them silently denies. → [maravilla-policies](../maravilla-policies/SKILL.md).
+5. **Storage `node.key` includes the bucket prefix.** `node.key.startsWith("templates/")` never matches when the SDK helper sends `my-bucket/templates/...`. KV `node.key` does NOT include the namespace. Storage-only quirk.
+6. **`list` ops carry `node.prefix`, not `node.key`.** "Users can read AND list this prefix" needs separate clauses for each.
+7. **First-login policies must check `node.key`, not just `node.value.owner`.** A user reading their own profile for the first time hits `node.value == null`. A value-only check denies the legitimate first-read case.
+8. **Logout: delegate to `/_auth/logout`.** Don't clear cookies yourself — browsers ignore deletions whose `Secure`/`SameSite`/`Path` flags don't match the originals. The platform endpoint also invalidates the session row server-side. `<form method="post" action="/_auth/logout">`.
+9. **Refresh on `TokenExpired`, server-side.** When validate fails but `__refresh` is around, POST to `/_auth/refresh`, take the new `Set-Cookie` headers, `throw redirect(request.url, { headers })`. Otherwise users get bounced to `/login` after the access-token TTL.
+10. **`STORAGE.get` returns `Array<number>` from the native runtime.** Coerce to `Uint8Array` defensively — `obj instanceof Uint8Array ? obj : Array.isArray(obj) ? new Uint8Array(obj) : new Uint8Array(await new Response(obj).arrayBuffer())`. The runtime fix is tracked separately.
+11. **Trusted server-side ops on admin-only resources.** When app code needs to read an admin-only resource on behalf of an unauth'd flow (e.g., a duplicate-check before a deal write), wrap the lookup in `platform.policy.setEnabled(false)` (per-request, audit-logged) or write a dedicated narrowly-scoped resource. Don't relax the global policy.
+
+Every item above was a real silent bug. **Keep diagnostic logging on `getCurrentUser` always** — `[auth] cookie? validate ok → runtime caller AFTER setCurrentUser` — three log lines reduce auth debugging from hours to seconds.
+
 ## Project layout
 
 ```

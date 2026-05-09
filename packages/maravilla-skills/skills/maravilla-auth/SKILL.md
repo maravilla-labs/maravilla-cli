@@ -237,10 +237,205 @@ These bypass the normal user-facing endpoint and require the caller to be admin 
 
 ## Common pitfalls
 
-- **The "empty list" bug.** You called `validate()`, set `event.locals.user`, but skipped `setCurrentUser()`. Owner-scoped reads return zero rows because the policy engine sees an anonymous caller. Fix: always pair `validate` with `setCurrentUser` in your hook.
-- **`setCurrentUser` thrown error on a remote client.** That method only works inside the runtime. CLI / Node scripts that hold a token can call public APIs but cannot bind a caller.
-- **Mixing `withAuth` with manual binding.** `withAuth` already runs the contract; don't call `setCurrentUser` again inside the handler.
-- **Caching `getCurrentUser()` across requests.** Don't. The caller is request-scoped — store the `event.locals.user` from your hook instead.
+These are the silent killers — every one of them was a real production bug. **Read this list before writing auth code.**
+
+### `auth.is_admin` is hardcoded `false` — never use it in policies
+
+The auth context exposes both `auth.is_admin` and `auth.groups`. The first is **always `false`** in dev-server today and not consistently populated in production. **Any policy clause built on `auth.is_admin` is unreachable.** Use `auth.groups.contains("admin")` instead — that reads the live group graph from the request's `AuthSnapshot`.
+
+```ts
+// WRONG — always false
+policy: 'auth.is_admin || node.value.owner == auth.user_id'
+
+// RIGHT
+policy: 'auth.groups.contains("admin") || node.value.owner == auth.user_id'
+```
+
+`auth.roles` is kept as a back-compat alias for `auth.groups` (same group-name array under both names) — new policies should use `auth.groups`.
+
+### `user.groups` carries group **IDs**, not names
+
+`AuthUser.groups` (returned from `validate` / `getUser` / `getCurrentUser`) is an array of `grp_…` IDs serialized into the JWT. **`user.groups.includes("admin")` is always false** — there is no name `"admin"` in there, only `["grp_7-PIvCd4aw-Z-…"]`.
+
+For a JS-side admin check, resolve via `getUserGroups`:
+
+```ts
+const groups = await platform.auth.getUserGroups(user.id);
+const isAdmin = groups.some((g) => g.name === 'admin');
+```
+
+Inside policies, `auth.groups.contains("admin")` works on **names** — the policy engine resolves the AuthSnapshot which carries names, not the JWT array of IDs. The two layers expose the same data under the same field name but with different value shapes; this trips up everyone.
+
+### `addUserToGroup` takes a group_id, not a name
+
+The platform method `platform.auth.addUserToGroup(userId, groupId)` expects the `grp_…` id. Passing the literal name `"admin"` silently fails server-side (or, in older runtimes, no-ops because the binding wasn't even registered). The pattern is always:
+
+```ts
+const group = await platform.auth.getGroupByName('admin');
+if (!group?.id) {
+  console.log('admin group not provisioned — auth-settings reconciler should have created it from maravilla.config.ts::groups');
+  return;
+}
+await platform.auth.addUserToGroup(user.id, group.id);
+```
+
+The auth-settings reconciler creates declared groups at deploy time, so `getGroupByName` resolves reliably for any group declared in `maravilla.config.ts`.
+
+### "Empty list" bug — skipped `setCurrentUser`
+
+You called `validate()`, set `event.locals.user`, but skipped `setCurrentUser()`. Owner-scoped policies see `auth.user_id == ""` and silently filter everything out. The UI shows an empty list. There is no error. Always pair `validate` with `setCurrentUser` in your hook (or use `withAuth`).
+
+### Logout cookies must mirror the platform's flags
+
+The platform's auth-pages handler sets cookies with these exact flags on login:
+
+| Cookie | Flags |
+|---|---|
+| `__session` | `HttpOnly; Secure; SameSite=Lax; Path=/` |
+| `__refresh` | `HttpOnly; Secure; SameSite=Strict; Path=/_auth` |
+
+A `Set-Cookie` deletion (`Max-Age=0`) only matches the original cookie when the **flags align**. Clearing without `Secure` (e.g., `__session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`) leaves the cookie in place and the user stays logged in. **Cleanest fix: don't reinvent logout — delegate to `/_auth/logout`.** The platform handler clears with the right flags AND server-side invalidates the session row via `delete_session_by_refresh_token` (otherwise a stolen access-token JWT works until expiry).
+
+```tsx
+// In your Navbar's sign-out button
+<form method="post" action="/_auth/logout">
+  <button type="submit">Sign out</button>
+</form>
+```
+
+Same-origin form submits send the `__refresh` cookie + Origin header automatically; the platform's CSRF check passes.
+
+### `setCurrentUser` doesn't fix expired tokens — server-side refresh does
+
+When a user comes back >1 hour later (default access-token TTL) but their `__refresh` cookie is still valid, `validate(token)` throws `TokenExpired` and naively your loader bounces them to `/login`. The platform exposes `POST /_auth/refresh` which rotates the session using the `__refresh` cookie. Pattern: catch the validate failure, POST to `/_auth/refresh` server-side, take the response's `Set-Cookie` headers, and `throw redirect(request.url, { headers })` so the browser reissues the request with fresh cookies.
+
+```ts
+async function tryRefreshSession(request: Request): Promise<Headers | null> {
+  const cookieHeader = request.headers.get('cookie') ?? '';
+  if (!parseCookie(cookieHeader, '__refresh')) return null;
+  const url = new URL(request.url);
+  const origin = `${url.protocol}//${url.host}`;
+  const res = await fetch(`${origin}/_auth/refresh`, {
+    method: 'POST',
+    headers: { cookie: cookieHeader, origin },
+    redirect: 'manual',
+  });
+  if (!res.ok) return null;
+  const out = new Headers();
+  const setCookies = (res.headers as { getSetCookie?: () => string[] }).getSetCookie?.();
+  if (setCookies) setCookies.forEach((c) => out.append('Set-Cookie', c));
+  else if (res.headers.get('set-cookie')) out.append('Set-Cookie', res.headers.get('set-cookie')!);
+  return out;
+}
+
+// In getCurrentUser, on validate failure or missing __session but present __refresh:
+const refreshHeaders = await tryRefreshSession(request);
+if (refreshHeaders) throw redirect(request.url, { headers: refreshHeaders });
+return null; // fall through to login redirect
+```
+
+### `setCurrentUser` errors on a remote client
+
+That method only works inside the runtime. CLI / Node scripts that hold a token can call public APIs (`validate`, `register`, `login`) but cannot bind a caller. Test fixtures running outside an HTTP scope must use `runWithRequest(async () => …)` from `@maravilla-labs/platform` to open a request scope first.
+
+### Mixing `withAuth` with manual binding
+
+`withAuth` already runs the 3-step contract; don't call `setCurrentUser` again inside the handler.
+
+### Caching `getCurrentUser()` across requests
+
+Don't. The caller is request-scoped — store `event.locals.user` from your hook instead.
+
+## Admin & groups — bootstrap and enforcement patterns
+
+### Declare groups in `maravilla.config.ts`
+
+```ts
+auth: {
+  groups: [
+    {
+      name: 'admin',
+      description: 'Staff with paradies access',
+      permissions: [
+        { resource_name: 'partners', actions: ['read', 'write', 'delete', 'list'] },
+        // …
+      ],
+    },
+  ],
+}
+```
+
+The auth-settings reconciler in delivery upserts these on every deploy — by the time your app code runs, the group exists in the auth.db with a stable `grp_…` id.
+
+### Bootstrap an initial admin via env allowlist
+
+A bootstrap admin can't have a pending invite (no admin exists yet to write it). Pattern: gate on env email allowlist, lookup the group by name, add the user to it.
+
+```ts
+// app/lib/auth.server.ts (excerpt)
+function bootstrapAdminEmails(): string[] {
+  const raw = process.env.ADMIN_EMAILS ?? 'founder@example.com';
+  return raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+}
+
+async function maybeBootstrapAdmin(user: AuthUser) {
+  if (!bootstrapAdminEmails().includes(user.email.toLowerCase())) return;
+
+  // Already a member? Resolve via getUserGroups (returns full AuthGroup[]
+  // with .name field — NOT user.groups which is just IDs).
+  const groups = await platform.auth.getUserGroups(user.id);
+  if (groups.some((g) => g.name === 'admin')) return;
+
+  const group = await platform.auth.getGroupByName('admin');
+  if (!group?.id) return;
+  await platform.auth.addUserToGroup(user.id, group.id);
+}
+```
+
+Call this from your `getCurrentUser` hook on every login.
+
+### Pre-signup admin invites
+
+For inviting people who haven't registered yet (no `user_id` exists), declare a dedicated KV resource and key on email:
+
+```ts
+{
+  name: 'admin_invites',
+  type: 'kv',
+  policy:
+    'auth.groups.contains("admin") || ' +
+    '(auth.email != "" && node.key == auth.email)',
+}
+```
+
+On first login, the user reads + deletes their own invite (the `node.key == auth.email` clause permits it), and the bootstrap path adds them to the admin group. Don't squat invites in a generic admin-only resource — the chicken-and-egg (user can't read what would let them become admin) makes first-login flows 500.
+
+### `isUserAdmin` for UI / route guards
+
+```ts
+export async function isUserAdmin(user: AuthUser | null): Promise<boolean> {
+  if (!user) return false;
+  const groups = await platform.auth.getUserGroups(user.id);
+  return groups.some((g) => g.name === 'admin');
+}
+```
+
+Don't write `user.groups.includes('admin')` — that's the IDs-vs-names trap. The runtime caches `AuthSnapshot` per request, so repeated `getUserGroups` calls within a request are amortized.
+
+## Diagnostic logging — keep it on
+
+Auth bugs are silent. A small fixed set of log lines in your `getCurrentUser` hook makes them debuggable in 30 seconds instead of hours:
+
+```ts
+console.log('[auth] cookie?', cookieHeader.length > 0, 'token len:', token?.length ?? 0);
+const user = await platform.auth.validate(token);
+console.log('[auth] validate ok →', JSON.stringify({ id: user.id, email: user.email, groups: user.groups }));
+await platform.auth.setCurrentUser(token);
+const bound = await platform.auth.getCurrentUser();
+console.log('[auth] runtime caller AFTER setCurrentUser →', JSON.stringify(bound));
+```
+
+Three log lines tell you immediately whether the cookie reached you, validate succeeded, and the runtime sees the bound user. No PII beyond what you already have on `AuthUser`. Standing observability beats reactive debugging.
 
 ## Related skills
 
