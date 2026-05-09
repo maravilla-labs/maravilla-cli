@@ -53,6 +53,24 @@ const bytes = await storage.get('docs/report.pdf');
 if (bytes) return new Response(bytes, { headers: { 'Content-Type': 'application/pdf' } });
 ```
 
+> **Native-runtime caveat.** In production, the underlying op currently
+> serialises `Vec<u8>` as a JS `Array<number>`, not a `Uint8Array`.
+> Wrapping the result in `new Response(obj as BodyInit)` fails with
+> `"The value returned from the next() method is not an Uint8Array
+> object"`. If you're calling `STORAGE.get` directly (rather than
+> through a typed app helper), coerce defensively:
+>
+> ```ts
+> const obj = await storage.get(key);
+> const bytes =
+>   obj instanceof Uint8Array ? obj :
+>   Array.isArray(obj)        ? new Uint8Array(obj as number[]) :
+>   new Uint8Array(await new Response(obj as BodyInit).arrayBuffer());
+> ```
+>
+> The runtime fix to return a real `Uint8Array` is tracked separately;
+> this defensive coerce keeps apps working until then.
+
 ### `getMetadata(key)` — without fetching bytes
 
 ```typescript

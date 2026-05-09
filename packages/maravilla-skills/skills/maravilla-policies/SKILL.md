@@ -56,12 +56,37 @@ This is whatever `platform.auth.getCurrentUser()` would return for this request:
 
 Shape depends on the op:
 
-- **DB write** — the document being inserted/updated.
-- **DB read** — each candidate document from the result set (rows are filtered post-policy if denied).
-- **KV put** — `{ key, value, namespace }`.
-- **KV get** — `{ key, namespace, ...value-fields-if-known }`.
-- **Storage put / get** — `{ key, contentType, size }`.
-- All ops carry `node.action` — `"read" | "write" | "delete"` — so you can branch per-action in a single expression.
+- **DB write** — the document being inserted/updated. `node.action`: `"write"` / `"delete"`.
+- **DB read** — each candidate document from the result set (rows filtered post-policy if denied). `node.action`: `"read"`.
+- **KV** — `{ namespace, key, action, value }` for per-key ops; `{ namespace, prefix, action }` for `list`. Actions: `"read"` (get), `"write"` (put — also carries `value_new`), `"delete"`, `"list"`.
+- **Storage** — `{ bucket, key, action }` for per-key ops; `{ bucket, prefix, action }` for `list`. Actions: `"get"`, `"put"`, `"delete"`, `"list"`, `"upload-url"`, `"download-url"`, `"get-metadata"`, `"confirm"`. **NOT** `"read"`/`"write"` — those are KV's. Mixing them is a silent denial: `node.action == "read"` on a storage op never matches because the actual action is `"get"`.
+
+#### Action-string contract
+
+| Resource type | Per-key actions | List action | Other |
+|---|---|---|---|
+| KV (`type: 'kv'`) | `read`, `write`, `delete` | `list` | — |
+| DB (`type: 'database'`) | `read`, `write`, `delete` | (uses `read` per-row) | — |
+| Storage (`type: 'storage'`) | `get`, `put`, `delete`, `get-metadata`, `confirm` | `list` | `upload-url`, `download-url` |
+| Realtime (`type: 'realtime'`) | `subscribe`, `publish` | — | — |
+
+Source of truth: `crates/runtime/src/ops/platform/{ops_kv,ops_db,ops_storage,ops_realtime}.rs`.
+
+#### `node.key` shape gotcha (storage only)
+
+For storage ops, `node.key` is the **full** key your JS code passed to `STORAGE.get/put/etc.` — including any leading "bucket"/resource-name segment your SDK helpers prepend. The runtime extracts `bucket = key.split_once('/').0` for resource_name lookup but does NOT strip it from `node.key` before policy eval.
+
+So if your `storage.server.ts` (or equivalent) prepends the resource name like `partner-files/`, your `startsWith()` clauses must include it too:
+
+```ts
+// WRONG — never matches; storage.get sends partner-files/templates/...
+'node.key.startsWith("templates/")'
+
+// RIGHT
+'node.key.startsWith("partner-files/templates/")'
+```
+
+KV `node.key` does NOT include the namespace — KV ops pass the user's key verbatim. Only storage has this gotcha because of the bucket-derived resource_name pattern.
 
 ## Common patterns
 
@@ -120,6 +145,34 @@ Given `relations: [{ relation_name: 'STEWARDS', implies_stewardship: true }]` in
 ```
 
 Lets a steward (e.g. a parent) act on a minor's records.
+
+### Storage: per-user files + shared templates
+
+```javascript
+// Resource declaration in maravilla.config.ts:
+{
+  name: 'app-files',
+  type: 'storage',
+  actions: ['read', 'write', 'delete', 'list'],  // declarative; runtime uses get/put/delete/list internally
+  policy:
+    'auth.groups.contains("admin") || ' +
+    // Owner unrestricted on their own subtree:
+    '(auth.user_id != "" && node.key.startsWith("app-files/users/" + auth.user_id + "/")) || ' +
+    // Every authenticated user reads shared templates (get / get-metadata / download-url):
+    '((node.action == "get" || node.action == "get-metadata" || node.action == "download-url") '
+    + ' && auth.user_id != "" && node.key.startsWith("app-files/templates/")) || ' +
+    // List the templates prefix (list ops carry node.prefix not node.key):
+    '(node.action == "list" && auth.user_id != "" && node.prefix.startsWith("app-files/templates/")) || ' +
+    // Owner lists their own subtree:
+    '(node.action == "list" && auth.user_id != "" && node.prefix.startsWith("app-files/users/" + auth.user_id))',
+}
+```
+
+Three things to internalise from this example:
+
+1. **List vs get clauses are separate.** `list` ops carry `node.prefix` (a directory-style prefix). All other ops carry `node.key` (the full key). A clause that uses `node.key` will never match for `list`, and vice versa.
+2. **Action enumeration for "read-like" storage ops.** There's no single `"read"` — pick the actions your app actually uses. `get` covers `STORAGE.get`; `get-metadata` for `getMetadata`; `download-url` for `generateDownloadUrl`. List them explicitly.
+3. **Resource-name prefix on every storage `startsWith()`.** See the gotcha above.
 
 ### Self-only with a guarded write source
 
