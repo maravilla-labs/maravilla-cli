@@ -72,6 +72,31 @@ Shape depends on the op:
 
 Source of truth: `crates/runtime/src/ops/platform/{ops_kv,ops_db,ops_storage,ops_realtime}.rs`.
 
+#### `node.value` (existing) vs `node.value_new` (incoming)
+
+For KV `write` ops (`platform.env.KV.<ns>.put(key, value)`), the runtime gives the policy **both** field shapes:
+
+| Field | When present | What it contains |
+|---|---|---|
+| `node.value_new` | Always on `write` | The incoming payload — what JS just passed to `put` |
+| `node.value` | On `write`, `read`, `delete` if a policy is attached to the resource | The pre-existing record at this key, or `null` on first-write |
+
+This split matters when your data has a "owner" field embedded in the value (not in the key). For a "partners can write their own deals only" rule, you need to check **both**:
+
+1. The new value's owner is the caller (`node.value_new.partner_userId == auth.user_id`) — otherwise they'd be writing someone else's deal.
+2. If a record already exists, its owner is also the caller (`node.value == null || node.value.partner_userId == auth.user_id`) — otherwise a malicious caller could rewrite an existing deal's `partner_userId` to grab it.
+
+```ts
+// Worked example — gating writes on a value-side owner field
+'(node.action == "write" && auth.user_id != "" && node.key.startsWith("deal:") '
++ '  && node.value_new.partner_userId == auth.user_id '
++ '  && (node.value == null || node.value.partner_userId == auth.user_id))'
+```
+
+The `node.value == null || …` guard handles first-writes (where there's nothing to check against) without weakening the take-over protection. Read/delete ops only carry `node.value` — gate them on that alone.
+
+Storage `write` (`put`) also carries `node.value` (existing object metadata) but **does not** populate `node.value_new` — the bytes aren't deserialised into JSON. For storage, ownership must come from the key shape.
+
 #### `node.key` shape gotcha (storage only)
 
 For storage ops, `node.key` is the **full** key your JS code passed to `STORAGE.get/put/etc.` — including any leading "bucket"/resource-name segment your SDK helpers prepend. The runtime extracts `bucket = key.split_once('/').0` for resource_name lookup but does NOT strip it from `node.key` before policy eval.
