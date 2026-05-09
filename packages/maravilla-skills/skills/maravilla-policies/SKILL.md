@@ -97,6 +97,30 @@ The `node.value == null || …` guard handles first-writes (where there's nothin
 
 Storage `write` (`put`) also carries `node.value` (existing object metadata) but **does not** populate `node.value_new` — the bytes aren't deserialised into JSON. For storage, ownership must come from the key shape.
 
+#### Don't `JSON.stringify` values your policy reads
+
+The runtime stores whatever JS passes to `KV.put` **verbatim** (`crates/runtime/src/ops/platform/ops_kv.rs::op_kv_put` — serde-deserialises into `JsonValue`). So:
+
+| What JS does | What the policy sees as `node.value_new` | Field access works? |
+|---|---|---|
+| `KV.put(k, JSON.stringify(obj))` | `JsonValue::String("{...}")` — a string | **No.** `node.value_new.foo` → `null` for any field |
+| `KV.put(k, obj)` | `JsonValue::Object(map)` — a real object | Yes |
+
+If your policy uses `node.value_new.<field>` (or `node.value.<field>` on update/delete), the value **must be an object** on the way in. The hello-world `put(k, JSON.stringify(x))` pattern still works for key-only policies, but breaks silently the moment you reach for a field on the value:
+
+```ts
+// BUG — value_new arrives as a string, partner_userId resolves to null,
+// the policy denies, the user gets a 500.
+await KV.put(`deal:${deal.id}`, JSON.stringify(deal));
+
+// FIX — pass the object; the runtime serialises it for you.
+await KV.put(`deal:${deal.id}`, deal);
+```
+
+Reads still work either way if your `parse()` helper accepts both shapes (`typeof raw === 'object' ? raw : JSON.parse(raw)`), so you can roll this fix forward without a migration.
+
+This trap is invisible at type-check time — `KV.put` accepts `unknown` for value — and the failure mode is "policy denies on a payload that looks correct in the logs." If you see policy denials with a value-side check that should pass, log `typeof` of what you passed before suspecting the policy.
+
 #### `node.key` shape gotcha (storage only)
 
 For storage ops, `node.key` is the **full** key your JS code passed to `STORAGE.get/put/etc.` — including any leading "bucket"/resource-name segment your SDK helpers prepend. The runtime extracts `bucket = key.split_once('/').0` for resource_name lookup but does NOT strip it from `node.key` before policy eval.
