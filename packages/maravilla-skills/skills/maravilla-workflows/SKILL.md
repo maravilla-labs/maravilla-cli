@@ -122,6 +122,14 @@ const result = await step.run('charge-card', async () => {
 
 The first time this step runs, `fn` executes and its return value is persisted. On replay, the persisted value is returned without re-running `fn`. **Each step name within a workflow run must be unique.**
 
+> **Naming footgun (learned the hard way):** never derive step names from
+> mutable data — `step.run(\`persist-${Object.keys(fields).sort().join('-')}\`, …)` collides
+> the moment two call sites set the same field set with different values. Use a
+> short call-site identifier you choose by hand: `'persist-init'`, `'persist-final'`,
+> `'persist-text-layer'`. The runtime throws `duplicate step name "X" — step names
+> must be unique per run` and the workflow stalls partway through, leaving
+> the attachment (or whatever you're updating) in a half-persisted state.
+
 ### `step.sleep(name, duration)` — short-form sleep
 
 ```typescript
@@ -260,9 +268,82 @@ await step.run('event-started', () => /* ... */);
 
 - **Naked side effects in the workflow body.** Anything outside `step.run` re-runs on every replay. Even `console.log` is fine, but `fetch`, `kv.put`, `db.insertOne` are not — wrap them.
 - **Non-deterministic logic outside steps.** `Math.random()`, `Date.now()`, `crypto.randomUUID()` outside `step.run` will give different values on replay. Capture them inside a step.
-- **Step name collisions.** The runtime keys steps by `name` per-run. Reusing a name in the same run is undefined behavior — append an iteration counter if you loop.
+- **Step name collisions.** The runtime keys steps by `name` per-run. Reusing a name in the same run is undefined behavior — append an iteration counter if you loop. **Never derive names from mutable data** (sorted field keys, content hashes from inputs that change across call sites) — pick a static call-site identifier you choose by hand.
 - **Long timeouts.** `options.timeoutSecs` is the **whole-run** budget. Make sure it covers worst-case sleeps + step durations.
 - **Workflow vs event.** If you only need to react once and quickly, use an event handler (see [maravilla-events](../maravilla-events/SKILL.md)). Workflows pay a ledger cost per step.
+
+## Dev-mode prerequisites (`maravilla dev`)
+
+Workflows are wired into dev as of **CLI 0.12.1** (May 2026). Earlier versions
+parse `workflows/*.ts` but never spawn the orchestrator, so every
+`platform.workflows.start(...)` queues a run that sits at `status: queued`
+forever. Symptoms: `?diag` shows `live_run.status: "queued"`, `attempt: 0`,
+`steps: []` and stays there indefinitely.
+
+Three things must be true for workflows to actually execute in dev:
+
+1. **CLI ≥ 0.12.1** — older versions are missing the dev-server orchestrator
+   bootstrap. Check with `maravilla --version`.
+
+2. **`workflows/` directory must exist BEFORE `maravilla dev` starts.** The
+   vite-plugin's file watcher is attached via `fs.watch` only if the
+   directory exists at startup; adding it later won't trigger hot-rebuild
+   of `workflows.json`. The plugin warns at startup when it skips; restart
+   `maravilla dev` after creating `workflows/`.
+
+3. **`outDir` must be `'build'`.** The dev-server only loads
+   `build/workflows.json` (with `.maravilla/workflows.json` as a legacy
+   fallback). Any other value in `maravilla({ outDir: '...' })` causes
+   silent dispatcher dropout — the plugin warns when it sees a custom
+   outDir.
+
+### Reacting to platform events (the REN bridge pattern)
+
+`step.waitForEvent` consumes signals sent via `platform.workflows.sendEvent`,
+not raw REN events (`KV.put`, `STORAGE.put`, `transforms.complete`, etc).
+To wait on a platform event, add a tiny bridge handler:
+
+```typescript
+// events/onTransformBridge.ts
+import { defineEvent } from '@maravilla-labs/platform/events';
+
+export const onTransformBridge = defineEvent(
+  { match: { r: 'transforms' } },
+  async (event, ctx) => {
+    if (event.t !== 'transform.complete' && event.t !== 'transform.failed') return;
+    await ctx.platform.workflows.sendEvent('transform.done', {
+      jobId: event.k,
+      status: event.t === 'transform.complete' ? 'complete' : 'failed',
+      outputKey: event.data?.outputKey,
+    });
+  },
+);
+```
+
+```typescript
+// then in your workflow:
+const md = await step.run('md-dispatch', () => transforms.docToMarkdown(srcKey));
+const done = await step.waitForEvent('md-wait', {
+  type: 'transform.done',
+  match: { jobId: md.id },
+  timeout: '10m',
+});
+```
+
+Without this bridge, the workflow sits at `waiting_event` forever — the
+worker publishes REN events but no `sendEvent` call ever wakes the waiter.
+
+### Observability in dev
+
+`maravilla dev` has hotkeys to drop into the rich workflow + event TUIs
+without leaving dev:
+
+- `w` — Workflow runs browser (status filter, step ledger, cancel)
+- `W` — Workflow definitions list
+- `e` — Live REN event tail
+- `E` — Registered event handlers
+
+Each one talks to your local dev-server via `PlatformTarget::local(...)`.
 
 ## Related skills
 

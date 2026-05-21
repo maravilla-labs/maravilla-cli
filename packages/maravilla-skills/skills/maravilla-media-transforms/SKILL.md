@@ -5,7 +5,7 @@ description: "Async media + document derivations via `platform.media.transforms`
 
 # Maravilla media transforms
 
-Async media + document processing jobs that derive new storage objects from existing ones — video transcode, image resize, OCR, document → PDF / HTML / Markdown / thumbnails, image-replacement templating, QR injection. The runtime exposes two equivalent paths:
+Async media + document processing jobs that derive new storage objects from existing ones — video transcode, image resize, image OCR (Tesseract — image inputs only, not PDFs; see the PDF→text pattern below), document → PDF / HTML / Markdown / thumbnails, image-replacement templating, QR injection. The runtime exposes two equivalent paths:
 
 1. **Declarative** — list patterns in `maravilla.config.ts` under `transforms`. The adapter compiles each entry into a synthetic `onStorage({ keyPattern, op: 'put' })` handler that fires every transform in `Promise.all` whenever a matching key lands. **Default for all "every upload of type X gets these renditions" cases.**
 2. **Imperative** — call `platform.media.transforms.transcode/thumbnail/resize/ocr/probe(...)` from a route or event handler. For one-off jobs, on-demand re-derivation, or when the source key isn't predictable from a pattern.
@@ -34,8 +34,10 @@ export default defineConfig({
         { width: 400,  format: 'webp', quality: 80 },
       ],
     },
-    // PDF receipts → OCR text dump.
-    'uploads/receipts/**': {
+    // Photo receipts → OCR text dump. NOTE: `transforms.ocr` is
+    // image-only — feeding a PDF to OCR does NOT work (see footguns).
+    // Match a path you control to be image uploads only.
+    'uploads/receipt-photos/**': {
       ocr: { lang: 'eng+deu' },
     },
   },
@@ -152,6 +154,67 @@ The composition trap (don't do this): calling `docReplaceImages` then `docInsert
 - Polling: `await platform.media!.transforms.job(jobId)` returns `{ id, status }`.
 - Push-based: subscribe to REN events `transform.complete` / `transform.failed` — see [realtime](../maravilla-realtime/SKILL.md). Pattern: client renders placeholder via `keyFor` immediately, REN flips it to "ready" the moment the worker reports complete.
 
+## Pattern: extracting text from PDFs (the right way)
+
+The naive `transforms.ocr(pdfKey)` does **not** work — Tesseract is image-only.
+Real PDFs need a two-stage pipeline. The right architecture:
+
+1. **Try `docToMarkdown` first.** Cheap, near-instant. Goes through
+   `soffice → html → pandoc`. Works for any PDF that has a real text layer
+   (most modern PDFs do).
+
+2. **Validate the produced text.** Byte-scan heuristics (looking for `/Font`
+   resources) are unreliable — many "text" PDFs use subset fonts that decode
+   into garbage Unicode. Check the output instead. Three independent signals
+   catch the failure modes:
+
+   ```typescript
+   function validatePdfText(text: string): { ok: boolean; reason?: string } {
+     const t = text.trim();
+     if (!t || t.length < 10) return { ok: false, reason: 'too short' };
+     // (1) symbol vs alphanumeric ratio — garbage collapses to brackets/percents
+     const alpha = (t.match(/[a-zA-Z0-9]/g) ?? []).length;
+     if (1 - alpha / t.length > 0.35) return { ok: false, reason: 'symbol ratio' };
+     // (2) average word length — broken spacing produces 1-char or 200-char words
+     const words = t.split(/\s+/).filter(Boolean);
+     const avg = words.reduce((s, w) => s + w.length, 0) / words.length;
+     if (avg < 2 || avg > 15) return { ok: false, reason: 'word length' };
+     // (3) vowel ratio — Western languages have vowels; subset-font garbage doesn't
+     const letters = t.replace(/[^a-zA-Z]/g, '').toLowerCase();
+     if (letters) {
+       const v = (letters.match(/[aeiouy]/g) ?? []).length / letters.length;
+       if (v < 0.2 || v > 0.7) return { ok: false, reason: 'vowel ratio' };
+     }
+     return { ok: true };
+   }
+   ```
+
+3. **If validation fails → escalate.** For each page up to a cap (10 is a
+   reasonable default), call `transforms.docThumbnail(pdfKey, { page: N,
+   width: 1600, format: 'png' })` to rasterize the page. When each render
+   lands (via the `transform.complete` REN event), dispatch
+   `transforms.ocr(rasterizedKey)` on the PNG. Concatenate the OCR outputs.
+
+A durable workflow is the right shape for this — the rasterize + OCR pair
+is two transform jobs per page, and `step.waitForEvent` gives you the
+rendezvous semantics for free. See [maravilla-workflows](../maravilla-workflows/SKILL.md)
+for the bridge handler that forwards `transform.complete` REN events onto
+the `transform.done` channel that workflows listen on.
+
+Heuristics that don't replace validation but ARE useful for sizing the
+escalation fan-out:
+
+```typescript
+// Heuristic page count from raw PDF bytes — `/Type /Pages /Count N` first,
+// fallback to counting `/Type /Page` headers. Returns 0 on compressed xref.
+function pdfPageCount(bytes: Uint8Array): number {
+  const text = new TextDecoder('latin1').decode(bytes);
+  const m = /\/Type\s*\/Pages\b[\s\S]{0,1024}?\/Count\s+(\d+)/.exec(text);
+  if (m) { const n = parseInt(m[1], 10); if (n > 0 && n < 10000) return n; }
+  return (text.match(/\/Type\s*\/Page(?![s])/g) ?? []).length;
+}
+```
+
 ## Footguns
 
 - **`probe` is sync, transforms are async.** `probe` returns a `MediaInfo` directly. Everything else returns a `JobHandle` and runs in the background.
@@ -159,6 +222,7 @@ The composition trap (don't do this): calling `docReplaceImages` then `docInsert
 - **Declarative entries fire on every put — including overwrites.** If a user re-uploads, every transform re-runs and overwrites. That's usually what you want; just be aware.
 - **`keyFor` must match Rust byte-for-byte.** If you find yourself reimplementing canonical JSON or hashing, you're holding the wrong end. Import `keyFor` from `@maravilla-labs/platform`.
 - **OCR languages are server-installed.** `lang: 'eng+jpn'` only works if the Tesseract language data is provisioned. Default `'eng'` is always safe.
+- **`transforms.ocr` is image-only — it CANNOT read PDFs.** The worker hands the raw source bytes to `tesseract <path> outbase -l <lang>`, and the classic Tesseract build only handles raster images (PNG/JPG/TIFF/BMP/GIF). Feeding a PDF either errors with "Cannot recognize image format" or silently times out after the 120s wall-clock budget. Use the pattern in the next section for PDFs.
 - **Doc templating placeholders are matched verbatim, including the braces.** `'{{LOGO}}'` matches the literal seven-character string in the document — the `{{ }}` style is a convention you adopt, not regex / Mustache. Missing tags are silently skipped (the operation is idempotent).
 - **Named-object replacement requires the template author to set the object's `Name` property** in Word/Writer. Anonymous shapes don't get matched; users who haven't set the name see the swap silently no-op.
 - **`docInsertQrCode` payload limit is 1500 bytes.** Larger payloads encode but produce a QR too dense to scan reliably — the platform rejects them up front.

@@ -260,6 +260,55 @@ Reach for [maravilla-workflows](../maravilla-workflows/SKILL.md) instead when yo
 
 Events are best for **single, fast, idempotent reactions** to a single trigger.
 
+## Bridging events to workflows (the `sendEvent` pattern)
+
+A workflow's `step.waitForEvent(name, { type, match })` only resolves when
+something calls `platform.workflows.sendEvent(type, payload)` — it does NOT
+listen to raw REN events directly. That's why you need a tiny event handler
+acting as a bridge whenever a workflow should wait on, say, a `transforms.*`
+completion:
+
+```typescript
+// events/onTransformBridge.ts — wakes any workflow waiting on a transform job
+import { defineEvent } from '@maravilla-labs/platform/events';
+
+export const onTransformBridge = defineEvent(
+  { match: { r: 'transforms' } },
+  async (event, ctx) => {
+    if (event.t !== 'transform.complete' && event.t !== 'transform.failed') return;
+    await ctx.platform.workflows.sendEvent('transform.done', {
+      jobId: event.k,
+      status: event.t === 'transform.complete' ? 'complete' : 'failed',
+      outputKey: event.data?.outputKey,
+    });
+  },
+);
+```
+
+The match between this handler's emitted `type` and the workflow's
+`waitForEvent({ type })` is what couples them. The `match` keys in the
+waiter (e.g. `{ jobId: md.id }`) are checked against the payload here.
+
+Same pattern applies for any REN event source you want a workflow to
+rendezvous on — KV writes, storage puts, custom `defineEvent` traffic.
+
+## Dev-mode prerequisites (`maravilla dev`)
+
+Two gotchas that cost real time to debug:
+
+1. **`events/` directory must exist BEFORE `maravilla dev` starts.** The
+   vite-plugin's file watcher is attached via `fs.watch` only if the
+   directory exists at startup. Adding it later won't trigger hot-rebuild
+   of `events.json`. Restart `maravilla dev` after creating `events/`.
+
+2. **`outDir` must be `'build'`** in your vite config. The dev-server only
+   loads `build/events.json` (legacy `.maravilla/events.json` works too).
+   Any other value causes silent dispatcher dropout — the plugin warns at
+   startup when it sees a custom outDir.
+
+In the dev TUI, press `e` to drop into the live REN event tail or `E` to
+list registered handlers (both run against the local dev-server).
+
 ## Related skills
 
 - [maravilla-config](../maravilla-config/SKILL.md) — declarative `transforms` instead of hand-written `onStorage`
