@@ -44,7 +44,21 @@ const recent = await db.find('posts',
 const me = await db.findOne('users', { email: 'alex@example.com' });
 ```
 
-Filter operators supported: `$eq` (default), `$ne`, `$gt` / `$gte` / `$lt` / `$lte`, `$in` / `$nin`, `$exists`, `$and`, `$or`. Not supported: `$regex`, `$where`, `$text`.
+Filter operators supported: `$eq` (default), `$ne`, `$gt` / `$gte` / `$lt` / `$lte`, `$in` / `$nin`, `$exists`, `$and`, `$or`. Array fields also support `$all`, `$elemMatch`, `$size`. Not supported: `$regex`, `$where`, `$text`.
+
+**Array fields match by element (MongoDB semantics).** A filter on an array
+field matches any document whose array *contains* the value — don't compare the
+whole array:
+
+```typescript
+// doc: { _id: 'a', tags: ['x', 'y'] }
+await db.find('posts', { tags: 'x' });             // ✅ contains 'x'
+await db.find('posts', { tags: { $in: ['x'] } });  // ✅ membership
+await db.find('posts', { tags: { $all: ['x', 'y'] } });          // all present
+await db.find('items', { entries: { $elemMatch: { qty: { $gte: 5 } } } });
+```
+
+`$ne` / `$nin` likewise exclude documents whose array contains the value. (Equality, `$in`, and the range/`$ne` operators are all element-aware — a scalar field of the same name still matches as before.)
 
 ### Update
 
