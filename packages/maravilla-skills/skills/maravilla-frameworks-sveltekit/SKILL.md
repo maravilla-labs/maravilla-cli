@@ -15,7 +15,7 @@ pnpm add @maravilla-labs/platform
 ```
 
 ```javascript
-// svelte.config.js
+// svelte.config.js  — the adapter (and compilerOptions/preprocess) live HERE
 import adapter from '@maravilla-labs/adapter-sveltekit';
 
 export default {
@@ -24,6 +24,35 @@ export default {
   },
 };
 ```
+
+### ⚠️ Keep `sveltekit()` in `vite.config.ts` option-free
+
+The moment you pass **any** options to `sveltekit()` in `vite.config.ts`
+(`adapter`, `compilerOptions`, …), SvelteKit **ignores `svelte.config.js`
+entirely** and falls back to `@sveltejs/adapter-auto`. On the Maravilla runtime
+adapter-auto can't detect the environment, so it emits **no Maravilla manifest** —
+`vite build` still exits 0, but the deployed site returns **"File not found" on
+every route**. (The only hint is a non-fatal warning: *"svelte.config.js is
+ignored when options are passed via your Vite config"* + *"Using
+@sveltejs/adapter-auto"*.)
+
+```typescript
+// vite.config.ts  — sveltekit() takes NO options
+import { sveltekit } from '@sveltejs/kit/vite';
+import { maravilla, maravillaFunctions } from '@maravilla-labs/vite-plugin';
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  plugins: [maravilla(), sveltekit(), maravillaFunctions()],
+});
+```
+
+Put the adapter **and** `compilerOptions` (e.g. runes mode) in `svelte.config.js`,
+never in `vite.config.ts`. A correct production build prints no adapter-auto
+warning and produces `build/manifest.json` + `build/server.js`; if `build/` has
+only `events.*`/`workflows.*`, the adapter didn't run. (The Maravilla vite plugin
+now fails the build with this exact diagnosis, but keep the configs right so you
+never hit it.)
 
 ## The single most important file: `src/hooks.server.ts`
 

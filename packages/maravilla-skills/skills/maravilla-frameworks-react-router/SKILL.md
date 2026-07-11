@@ -24,6 +24,22 @@ export default {
 } satisfies Config;
 ```
 
+### ⚠️ RR **7** only, and the adapter must actually run
+
+- **Pin to React Router 7.** RR8 installs cleanly (npm only *warns* on the peer
+  mismatch) but emits a build layout the runtime can't serve → the deploy 404s.
+  Keep `react-router`, `@react-router/dev`, `@react-router/serve` on `^7` (and
+  `vite` on `^6`). `maravilla doctor` flags an unsupported major.
+- **The Maravilla adapter must be wired** (via `react-router.config.ts` `adapter()`
+  above, or the `maravillaReactRouter()` Vite plugin). If it isn't — or it's
+  mis-ordered — the build produces a stock RR layout with **no Maravilla manifest**,
+  and the deployed site returns **"File not found"** on every route.
+
+A correct production build produces `build/manifest.json` + `build/server.js`. The
+Maravilla vite plugin now **fails the build** if those are missing (rather than
+shipping an artifact that 404s), and `maravilla check` exits non-zero on it — so a
+broken adapter setup can't reach production silently.
+
 ## Auth in RR7 — server loader pattern
 
 RR7 doesn't have a SvelteKit-style hook that runs before all loaders. The canonical pattern is a `getSession(request)` helper that runs the [3-step auth contract](../maravilla-auth/SKILL.md) and is called from any loader that needs the caller. This is the verbatim shape from the production university app:
