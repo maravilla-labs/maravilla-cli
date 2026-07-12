@@ -149,6 +149,17 @@ The signed/unsigned heuristic:
 - Override with `opts.signed: true | false`
 - `opts.ttl` controls signed URL lifetime in seconds (default 3600)
 
+## Shipping app-bundled assets (WASM, models, fonts)
+
+`getAssetUrl` is for **object-storage** files (uploads, generated artifacts). Files that ship **with your build** — a WASM runtime, an ML model, a worker script, fonts — are served as **static assets** instead. Put them under an `assets/` path in your framework's static directory:
+
+```
+public/assets/onnx/model.onnx     →  served at  /assets/onnx/model.onnx   (React Router / Nuxt)
+static/assets/wasm/engine.wasm    →  served at  /assets/wasm/engine.wasm  (SvelteKit)
+```
+
+Anything under the `/assets/` path is served **for any file type** (including `.wasm` / `.onnx` / other binaries) with long-lived caching — no extra config. Point your library at the absolute same-origin URL, e.g. `new URL('/assets/wasm/engine.wasm', location.origin).href`. For larger or swappable models you'd rather manage at runtime, store them in object storage and serve via `getAssetUrl('public/models/...')` (24h cache) instead. For the full client-side pattern (caching, prewarming, self-hosting models), see the **browser-side-inference** recipe.
+
 ## Capability-based access via unguessable keys
 
 A common pattern: store a per-share-link record under an unguessable nanoid key, with `public: true`, while keeping the owner's master record at a private key:

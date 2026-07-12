@@ -182,6 +182,25 @@ export const onDraining = onDeploy('draining', async (event, ctx) => { /* flush 
 
 Phases: `ready`, `draining`, `stopped`. Useful for warm-up and graceful-shutdown work.
 
+`ready` is also the natural home for **one-time app initialization** — seed reference data, create the first admin user, run a one-shot migration. Since `ready` fires on every activation, guard one-time work behind a run-once flag (checked first, set last) and keep the writes idempotent:
+
+```typescript
+export const seed = onDeploy('ready', async (event, ctx) => {
+  if (await ctx.kv.get('system', 'seeded')) return;       // run-once guard, checked first
+
+  // Idempotent setup — e.g. check-then-insert so a re-run is a no-op:
+  for (const row of REFERENCE_DATA) {
+    if (!(await ctx.database.findOne('catalog', { slug: row.slug }))) {
+      await ctx.database.insertOne('catalog', row);
+    }
+  }
+
+  await ctx.kv.put('system', 'seeded', '1');               // set the flag LAST
+});
+```
+
+Setting the flag last means a partial run (interrupted before completion) simply retries on the next activation and fills in what's missing.
+
 ### `defineEvent` — escape hatch for custom REN events
 
 ```typescript
@@ -202,8 +221,8 @@ Every handler receives an `EventCtx` with everything you need:
 ```typescript
 {
   env: Record<string, string>,            // per-tenant env vars
-  kv?: <kv adapter>,                      // KV — same shape as platform.env.KV
-  database?: <db adapter>,                // DB — same shape as platform.env.DB
+  kv?: <kv adapter>,                      // KV — method-first: ctx.kv.get(namespace, key)
+  database?: <db adapter>,                // DB — method-first: ctx.database.find(collection, filter)
   storage?: <storage adapter>,            // Object storage
   queue?: { send: (name, payload, opts?) => Promise<string> },
   auth?: <auth adapter>,                  // platform.auth
@@ -217,6 +236,7 @@ Every handler receives an `EventCtx` with everything you need:
 
 Notes:
 
+- Inside a handler, `ctx.kv` and `ctx.database` are **method-first** — the namespace / collection is the **first argument**: `ctx.kv.get(namespace, key)`, `ctx.kv.put(namespace, key, value)`, `ctx.database.find(collection, filter)`, `ctx.database.findOne(collection, filter)`. (Request/route code reaches the same data through the `getPlatform().env.KV.<namespace>` map — a different, namespace-keyed surface. Use the first-argument form in handlers.)
 - The `kv` adapter on `ctx` doesn't currently expose `list()` in some runtime versions. Fall back to `(ctx.platform as any).env.KV.<namespace>.list({ prefix })` — this is the pattern used in production demo handlers.
 - Always guard against missing services in defensive code:
 

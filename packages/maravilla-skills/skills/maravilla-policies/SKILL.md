@@ -137,6 +137,27 @@ So if your `storage.server.ts` (or equivalent) prepends the resource name like `
 
 KV `node.key` does NOT include the namespace — KV ops pass the user's key verbatim. Only storage has this gotcha because of the bucket-derived resource_name pattern.
 
+## Scoping bulk reads with `read_filter`
+
+The expressions above are **per-record predicates** — the runtime evaluates them against a single record (`findOne`, a single-key `get`, each write). For `find` / `list` that return many rows, declare a **`read_filter`** on the resource (in `maravilla.config.ts`): a JSON query filter the runtime ANDs into the query *before it runs*, so callers only ever read their own rows.
+
+```typescript
+// maravilla.config.ts
+{
+  name: 'reviews',
+  type: 'database',
+  actions: ['read', 'write', 'delete'],
+  policy: 'auth.user_id == node.owner || auth.is_admin',   // per-record: findOne + writes
+  read_filter: '{"owner":"$auth.user_id"}',                // bulk reads: find / list
+}
+```
+
+- It's a normal query object over the resource's own fields — ANDed into whatever filter the caller passed. `$auth.*` placeholders are substituted from the bound caller at request time: `$auth.user_id`, `$auth.email`, `$auth.is_admin`, `$auth.groups`, `$auth.roles`, `$auth.profile.<field>`.
+- Compose with `$or` for "mine plus shared": `'{"$or":[{"owner":"$auth.user_id"},{"public":true}]}'`.
+- `policy` and `read_filter` are complementary: `policy` makes single-record access decisions; `read_filter` scopes the rows a list returns. Apps that mix per-user and shared data usually want both.
+
+Declared in config, applied with the rest of your auth settings ([maravilla-config](../maravilla-config/SKILL.md) → applying config, or the Auth Settings → Resources UI).
+
 ## Common patterns
 
 ### Owner-only

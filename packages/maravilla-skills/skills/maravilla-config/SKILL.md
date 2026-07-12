@@ -7,7 +7,7 @@ description: "The `maravilla.config.ts` declarative project file. Use whenever c
 
 `maravilla.config.ts` lives at your project root and declares everything project-scoped: resources + policies, named groups, relation types, registration fields, OAuth providers, security/branding settings, database indexes, and media transforms.
 
-The build-time adapter reads this file, the runtime ships it as part of the manifest, and the platform reconciles the settings on each deploy. Sections are **upsert-only** for list-shaped data (resources, groups, relations, oauth, indexes) — declaring them creates/updates entries but never auto-deletes DB-only ones. Singleton sections (`registration`, `security`, `branding`) are replaced wholesale when declared.
+The build-time adapter reads this file and emits it into your app's build manifest (`.maravilla/manifest.json`). Apply it to your project with **`maravilla auth sync`** (or the **Auth Settings** UI in the dashboard) — a quick, explicit step you run after building, any time your config changes. Tip: wire `maravilla auth sync` into your CI right after the build so config and code ship together. Sections are **upsert-only** for list-shaped data (resources, groups, relations, oauth, indexes) — declaring them creates/updates entries but never auto-deletes DB-only ones. Singleton sections (`registration`, `security`, `branding`) are replaced wholesale when declared.
 
 ## Skeleton
 
@@ -71,6 +71,22 @@ The policy expression is the **raisin-rel** language; full details live in [mara
 - `node.*` is the resource-shaped data for the specific op being checked.
 - `node.action` is the action being performed (read / write / delete) — useful for action-specific clauses.
 - Leaving `policy` empty disables Layer-2 for that resource. Layer 1 still applies.
+
+### Scoping `find` / `list` reads with `read_filter`
+
+A `policy` is a **per-record** check — ideal for `findOne` / single-key reads and writes, where the runtime evaluates it against the record in hand. For `find` / `list` that return many rows, add a **`read_filter`** alongside the policy: a JSON query filter the runtime ANDs into the query before it runs, so callers only ever see their own rows.
+
+```typescript
+{
+  name: 'reviews',
+  title: 'Reviews',
+  actions: ['read', 'write', 'delete'],
+  policy: 'auth.user_id == node.owner || auth.is_admin',  // gates findOne + writes
+  read_filter: '{"owner":"$auth.user_id"}',               // scopes find / list reads
+}
+```
+
+The runtime substitutes `$auth.*` placeholders from the bound caller at request time — `$auth.user_id`, `$auth.email`, `$auth.is_admin`, `$auth.groups`, `$auth.roles`, `$auth.profile.<field>`. Compose with `$or` for shared/public rows, e.g. `'{"$or":[{"owner":"$auth.user_id"},{"public":true}]}'`. It's applied with the rest of your auth config (`maravilla auth sync` / Auth Settings UI). See [maravilla-policies](../maravilla-policies/SKILL.md) for the full read-scoping model.
 
 ## `auth.groups` — named permission bundles
 
