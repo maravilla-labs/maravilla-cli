@@ -1,6 +1,6 @@
 ---
 name: maravilla-media-transforms
-description: "Async media + document derivations via `platform.media.transforms` and the declarative `transforms` block in `maravilla.config.ts`. Media: transcode video, thumbnail extraction, image resize/variants, OCR. Documents (.docx/.odt/.pptx/.xlsx/...): convert to PDF, render page thumbnails, generic format conversion, Markdown extraction (RAG-ready), single-file HTML with inlined images, image-replacement templating ({{TAG}} swap + named-object swap), QR-code injection. Use when ingesting user uploads that need normalised renditions, generating contracts/invoices from templates, or extracting structured content for LLMs. Critical: derived keys are content-addressed — `keyFor(srcKey, spec)` is known up front, before the worker starts, so clients can render placeholder UI without round-trips. Declarative config is the default; imperative `transforms.*` calls are for one-offs."
+description: "Async media + document derivations via `platform.media.transforms` and the declarative `transforms` block in `maravilla.config.ts`. Media: transcode video, thumbnail extraction, image resize/variants, face detection with stored focal points (`detectFaces` / `setFocalPoint` / `getFocalPoint`) powering CSS `object-position` and face-aware `crop: 'focal'` renditions, OCR. Documents (.docx/.odt/.pptx/.xlsx/...): convert to PDF, render page thumbnails, generic format conversion, Markdown extraction (RAG-ready), single-file HTML with inlined images, image-replacement templating ({{TAG}} swap + named-object swap), QR-code injection. Use when ingesting user uploads that need normalised renditions, generating contracts/invoices from templates, or extracting structured content for LLMs. Critical: derived keys are content-addressed — `keyFor(srcKey, spec)` is known up front, before the worker starts, so clients can render placeholder UI without round-trips. Declarative config is the default; imperative `transforms.*` calls are for one-offs."
 ---
 
 # Maravilla media transforms
@@ -40,6 +40,15 @@ export default defineConfig({
     'uploads/receipt-photos/**': {
       ocr: { lang: 'eng+deu' },
     },
+    // Avatars → face detection + a face-centered square crop. Detection
+    // runs FIRST; `crop: 'focal'` variants automatically wait for it.
+    'uploads/avatars/**': {
+      detectFaces: true, // or { min_score: 0.7, max_faces: 8, fast: false }
+      variants: [
+        { width: 256, height: 256, format: 'webp', crop: 'focal' },
+        { width: 1024, format: 'webp' },
+      ],
+    },
   },
 });
 ```
@@ -53,6 +62,7 @@ The full method surface is exported from `@maravilla-labs/platform` — import t
 | Group | Methods |
 |---|---|
 | Media | `transcode` · `thumbnail` · `resize` · `probe` · `ocr` |
+| Faces / focal points | `detectFaces` · `setFocalPoint` · `getFocalPoint` · `clearFocalPoint` |
 | Documents | `docToPdf` · `docThumbnail` · `docConvert` · `docToMarkdown` · `docToHtml` |
 | Document templating | **`docTemplateMerge`** (text + images + QR in one render — preferred) · `docReplaceImages` (images only) · `docInsertQrCode` (QR only) |
 | Status | `job(id)` |
@@ -99,6 +109,26 @@ All `*Opts` types and `JobHandle` / `JobStatusResponse` / `MediaInfo` ship from 
 - `OcrOpts.lang` accepts ISO 639-2 + `+`-separated combinations (`'eng+deu'`); the language data must be installed server-side, default `'eng'` always works.
 - Image references in `docReplaceImages` and the rendered targets in `docInsertQrCode` use `{ src_key }` keys pointing at images already in `STORAGE` — bytes flow through Storage, not the request body.
 
+## Face detection & focal points
+
+`detectFaces(srcKey, opts?)` runs on-platform face detection over an image and persists a **focal point** for the source key — the anchor for CSS `object-position` / `background-position` and for face-aware crops. It's a normal queued job (`JobHandle`); the derived JSON artifact at `output_key` is `{ faces: [{x,y,w,h,score}…], face_count, focal: {x,y}, width, height }`, all coordinates normalized `0..1`. Opts (all optional): `min_score` (default `0.6`), `max_faces` (default `32`), `fast` (lower-accuracy/lower-latency). Re-detecting an unchanged image completes instantly from cache. Focal computation: one face → eye-biased box center; several → confidence·area-weighted centroid; none → `(0.5, 0.5)` recorded.
+
+Companion methods (synchronous, no job):
+
+- `setFocalPoint(srcKey, {x, y})` — manual override, `0..=1`. **Manual wins**: later detections refresh the face boxes but never move a manual focal point.
+- `getFocalPoint(srcKey)` — `FocalPointRecord | null` (`{ src_key, focal, source: 'faces'|'manual', face_count, faces?, updated_at }`). Point read, cheap enough for SSR on every image.
+- `clearFocalPoint(srcKey)` — removes the record; consumers fall back to center.
+
+The SSR pattern for correct art direction on ANY sized container — no cropping needed:
+
+```ts
+const rec = await platform.media!.transforms.getFocalPoint(key);
+const pos = rec ? `${rec.focal.x * 100}% ${rec.focal.y * 100}%` : '50% 50%';
+// <img src={url} style={`object-fit: cover; object-position: ${pos}`} />
+```
+
+Face-aware derived crops: `resize` (and `variants` entries) accept `crop: 'focal' | 'center'` — output is EXACTLY `width`×`height` (both required), cover-scaled and cut around the focal point (`'focal'`, falling back to center when none stored) or the geometric center (`'center'`). The resolved focal value is hashed into the derived key, so moving the focal point yields a NEW output key — stale crops are never served, but re-render your URLs (or use `getFocalPoint` + CSS when you don't want new assets per adjustment).
+
 ## Lifecycle: when to use which path
 
 | Scenario | Use |
@@ -109,6 +139,8 @@ All `*Opts` types and `JobHandle` / `JobStatusResponse` / `MediaInfo` ship from 
 | "Render this template for THIS user with name + logo + QR backlink" | Imperative `docTemplateMerge` — single call, all substitution kinds in one render |
 | "Render this template with ONLY images, no text or QR" | Imperative `docReplaceImages` from a route — placeholders and/or named objects |
 | Re-derive after a spec change | Imperative — write a one-off script that lists the prefix and calls the transform per object |
+| "Avatar/hero crops must keep faces in frame" | Declarative `detectFaces: true` + `crop: 'focal'` variants |
+| "Editor lets the user drag the crop anchor" | Imperative `setFocalPoint` from a route; render via `object-position` or re-derive crops |
 | Probe before deciding what to do | `transforms.probe(srcKey)` — synchronous, returns dimensions/duration/codecs |
 | Cancel an in-flight job | Not supported v1. Job will run to completion or failure. |
 
@@ -217,7 +249,12 @@ function pdfPageCount(bytes: Uint8Array): number {
 
 ## Footguns
 
-- **`probe` is sync, transforms are async.** `probe` returns a `MediaInfo` directly. Everything else returns a `JobHandle` and runs in the background.
+- **`probe` is sync, transforms are async.** `probe` returns a `MediaInfo` directly. Everything else returns a `JobHandle` and runs in the background — EXCEPT the focal-point trio (`setFocalPoint` / `getFocalPoint` / `clearFocalPoint`), which are synchronous point reads/writes, no job.
+- **`crop` requires BOTH `width` and `height`** — it's crop-to-fill, the output is exactly that box. One-dimension resizes can't crop; the enqueue rejects them with InvalidOpts.
+- **`crop` works on jpg/png/webp sources only (v1).** Exotic formats that fall back to the CLI converter get a clear error — convert the image first.
+- **`detectFaces` is image-only.** Video sources are rejected up front; extract a `thumbnail` frame first and detect on that.
+- **`face_count: 0` and `null` mean different things.** A record with `face_count: 0` says "we looked, no faces" (focal = center); `getFocalPoint` returning `null` says "never detected/set" — both should render as `50% 50%`, but only the latter warrants triggering a detection.
+- **Manual focal points survive re-detection.** `setFocalPoint` marks the record `source: 'manual'`; subsequent `detectFaces` runs refresh boxes/count but never move the point. `clearFocalPoint` re-arms automatic behaviour.
 - **Output keys live under `__derived/`.** Don't collide. Don't write to that prefix manually. Don't include policies on it — derived assets inherit the visibility of their source via the runtime, not your config.
 - **Declarative entries fire on every put — including overwrites.** If a user re-uploads, every transform re-runs and overwrites. That's usually what you want; just be aware.
 - **`keyFor` must match Rust byte-for-byte.** If you find yourself reimplementing canonical JSON or hashing, you're holding the wrong end. Import `keyFor` from `@maravilla-labs/platform`.
