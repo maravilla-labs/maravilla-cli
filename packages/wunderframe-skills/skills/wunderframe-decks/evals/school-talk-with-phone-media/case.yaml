@@ -1,0 +1,9 @@
+schema_version: "1.1"
+name: school-talk-with-phone-media
+expected_outcome: |
+  A simple, big-text 5-minute school deck about Apollo 11 for an 11-year-old, with a title, at least
+  three key-fact slides, his drawing (converted from HEIC) and the launch video (re-encoded from the
+  iPhone .mov to a small H.264 MP4 that starts on Next), speaker notes per slide matching his cards,
+  built as an uploadable .zip that passes the skill's checker.
+context:
+  scaffold_script: place-files.sh

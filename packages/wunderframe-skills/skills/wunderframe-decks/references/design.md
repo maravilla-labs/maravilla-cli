@@ -12,26 +12,25 @@ Read this before writing slides. A deck on Wunderframe is seen on a venue screen
 7. Motion, steps and slide pictures
 8. Speaker notes written for speaking
 9. Timing
-10. Lessons from a real talk
-11. Before you hand it over
+10. Before you hand it over
 
 ## 1. Plan the talk before the slides
 
 Write a **plan** first and show it to the speaker — it is cheap to change, a built deck is not. One block per slide:
 
 ```markdown
-## Slide 5: The problem (Not allowed in school)
-ON THE SCREEN  Headline + 4 short lines, the last one "They banned him from school"
-VISUAL         A school with a "no entry" sign; a small figure beside it
-SAY (notes)    When people found out … / They thought a handshake was enough … / Pause: "Would that be fair?"
-STEPS          4 presses, one line each, then the question
-TIME           ~40 s
+## Slide 5: The problem (Onboarding takes three weeks)
+ON THE SCREEN  Headline + 3 short lines, the last one "Day 15: first real task"
+VISUAL         A timeline of the first 15 days, most of it grey
+SAY (notes)    Ask the room: how long did yours take? / Where the days go … / Pause: "What if it were three days?"
+STEPS          3 presses, one line each, then the question
+TIME           ~45 s
 ```
 
 - **ON THE SCREEN** is what the audience reads. **SAY** is what the speaker says. They are different texts: if they are the same, the audience reads ahead and stops listening.
 - If the speaker has a brief, a rubric or grading criteria ("explain a quote", "key terms on screen", "free speaking, keywords only"), map **every criterion to a slide** and end the plan with that checklist. It is the easiest way to show the deck does what was asked.
 - If they speak from index cards, number the cards and note which cards belong to which slide ("cards 5–12 → slide 2"). Speakers keep their cards; the notes should match them.
-- Material may be in another language than the talk (a German textbook for an English talk). Translate, keep the original only where it matters (a quote, a name), and put foreign or technical words **on screen** — the audience can't spell what it only hears.
+- Material may be in another language than the talk. Translate, keep the original only where it matters (a quote, a name), and put foreign or technical words **on screen** — the audience can't spell what it only hears.
 - Facts the speaker might be asked about: note them in the plan with where they came from ("book p. 48"), and flag anything you are unsure of for the speaker to check — they will be the one answering questions.
 
 ## 2. Structure and rhythm
@@ -55,7 +54,7 @@ Offer the speaker a choice when the structure is not obvious — 2 or 3 arcs in 
 
 ## 3. One idea per slide — how much text
 
-- **The headline is the point**, not a label: "Gail became his mother", not "Family". One word in it can carry the accent colour (`<span class="hl">`) — the word you'd stress when saying it.
+- **The headline is the point**, not a label: "New hires ship in week one", not "Onboarding". One word in it can carry the accent colour (`<span class="hl">`) — the word you'd stress when saying it.
 - A small **kicker** above it (`.kicker`) says where we are in the talk ("Part 2 · The problem"). It replaces a separate agenda slide in short talks.
 - At most **4 lines** of body per slide, each **≤ 8 words**. If it needs more, it is two slides, or it belongs in the notes.
 - No full sentences the speaker will say anyway. Keywords and short phrases; **bold** (accent) for the one word per line that matters.
@@ -112,7 +111,7 @@ Two kinds of reveal, for two jobs:
 - **Steps** (`data-wf-step`) — the speaker presses Next and the next thing appears. Use them for **anything the speaker talks through**: list items, the punchline after the number, the boxes of a flow, the answer after the question. The audience reads what the speaker is on, not three lines ahead. ≤ 5 steps per slide; write the count in the notes ("4 presses").
 - **Entrances** (`class="enter" style="--d:.2"`) — things that arrive with the slide by themselves: the headline, a picture settling in. Decoration, never content the speaker waits for.
 
-Hard rules — each one is a way decks broke on stage:
+Rules, and why:
 
 - **Keep entrances short: everything settled within ~0.8 s.** The remote's slide pictures (the speaker's preview of current and next slide, the slide grid) are photographed about **1 s after the slide arrives, without the step helper**. Anything still on its way is missing from that picture, and the audience waits through a 5-second choreography on every slide. A timed sequence that runs 4 s is a sequence of steps that should be pressed. `npm run preview` → **Slides** shows the pictures exactly that way; the checker warns about long delays.
 - **Never hide steps in CSS** and never start a whole slide at `opacity: 0` (see `steps-and-media.md`).
@@ -137,19 +136,7 @@ Notes go to the phone, the lectern and the prompter (`references/presenting.md`)
 
 Put a timing line in the plan ("Slides 1–2 → 45 s · 3–4 → 45 s · …") and check the sum against the slot, minus 10–20 % for nerves, pauses and the room. Notes that take longer than the slide's time to say are too long. If the speaker must cut, cut slides, not words per slide.
 
-## 10. Lessons from a real talk
-
-A 5-minute school talk about a historical figure, built from a textbook page, 32 handwritten index cards and two of the student's drawings, delivered in English from German material. It was made **before Wunderframe had steps, web-video players or this template** — so its timed animations were the only way to reveal things then, not a mistake. What carries over — generalised:
-
-- **The plan file was the most useful artefact.** ON THE SCREEN / VISUAL / SAY per slide, a mapping of the grading criteria to slides, a card-to-slide map and a timing table. The speaker could rehearse from it before a single slide existed.
-- **The speaker's drawings made the deck.** Framed as paper (white mat, tilt, shadow) on the title and the quote slide, cropped round on the "why he's my hero" slide. Stock pictures would have been forgettable.
-- **A key-terms slide early** (four medical words + "activist", each with an icon and a one-line meaning) carried a criterion ("key terms on screen") and saved explanations later.
-- **Diagrams instead of bullets**: a timeline for the life dates, a three-box flow (speaks up → news spreads → kids can go to school), a numbered list for the problem, ending in a pill-shaped question to the room ("Would that be fair?").
-- **The quote slide** paired the original drawing with the translated quote and a "what it means" card — the criterion was "present a quote *and explain it*".
-- **Likely questions** with short answers sat in the last slide's notes.
-- **What the template now does for you** that this deck had to do by hand: one HTML file with everything inlined (also without npm, `scripts/single.py`), fonts shipped (it used system fonts, which look different on every device), HEIC photos converted before the build, `data-notes` read as notes. Where it timed its reveals (up to 5 s per slide), use **steps** today: the speaker sets the pace and the remote's slide pictures show complete slides. Fixed positions instead of `Math.random()` particles, no large animated blurs (old TV boxes stutter). The building blocks it invented — `.paper`, `.portrait`, `.terms`, `.timeline`, `.flow`, `.callout` — are in the template.
-
-## 11. Before you hand it over
+## 10. Before you hand it over
 
 Look at the whole deck at once (the preview's **Slides** grid, or screenshots) and check:
 

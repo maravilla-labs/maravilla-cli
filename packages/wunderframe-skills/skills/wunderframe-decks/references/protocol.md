@@ -9,7 +9,7 @@ Read this when the deck is NOT the template (reveal.js, Svelte, React, a hand-wr
 4. reveal.js bridge
 5. A deck built with a framework (Svelte/React/…) → one file
 6. Live data (`fetch` from the deck)
-7. Lessons from real talks
+7. Pitfalls when bringing your own deck
 
 ## 1. The protocol
 
@@ -177,11 +177,11 @@ What a screen actually does: it downloads the deck file from Wunderframe, turns 
 
 Where it does NOT work: the **slide pictures** for the remote (captured with `connect-src 'none'`), screens that are offline, and the template's sealed rehearsal (`npm run preview` blocks the network on purpose — use `npm run dev` to try a live feed). So a live slide (a counter, a poll result from your own API, a status board) must render a complete, sensible slide from data baked in at build time, and only *update* it when the fetch succeeds. Never let a slide wait for the network, never change slides from fetched data (every screen of the room must stay in step), and time out quickly. The checker warns about `fetch` so this stays a conscious choice.
 
-## 7. Lessons from real talks
+## 7. Pitfalls when bringing your own deck
 
-- **Report builds you do yourself.** A keynote that revealed "one more state" on a slide in its own code (e.g. a toggle on the last Next) never told the screen about it: the remote showed no "step 1 of 1" and the speaker could not see a build was waiting. Either use `data-wf-step`, or add `build`/`builds` to the state for such slides.
-- **Practice UI stays out of the stage build.** Rehearsal panels, timers, learning cards in the same component are fine as long as they only appear on keys or outside the frame (`embedded` false) — the screen shows the whole frame.
-- **Publishing the file on a website too?** Some static hosts treat `*.html` as routes; a copy served as `talk.deck` (text) avoids collisions. Wunderframe needs the real `.html` (or `.zip`) when uploading.
-- **Timed choreography is not a build.** A hand-written deck staged every slide as a 3–5 s sequence of delayed entrances (letters flying in, years counting up, boxes popping one after another). On a laptop it looked lively; on Wunderframe the remote's slide pictures — taken about 1 s after arrival — showed half-empty slides, numbers mid-count, and the speaker could not hold a reveal for a question. Content the speaker talks through belongs in steps; entrances settle within ~0.8 s.
-- **Per-screen randomness.** The same deck placed background particles with `Math.random()`: fine on one screen, different on each screen of a room. Use fixed positions.
+- **Report every build.** If your code reveals something on Next by itself (a toggle, an extra state), the screen does not know a step is waiting unless you say so: use `data-wf-step`, or add `build`/`builds` to the state for that slide. Otherwise the remote shows no "step 1 of 1".
+- **Keep practice UI out of the frame.** Rehearsal panels, timers or learning cards may exist in the same code only behind keys or when `embedded` is false — the screen shows the whole frame.
+- **Steps, not timed choreography.** Content the speaker talks through is a step; entrances settle within ~0.8 s (the remote's slide pictures are taken ~1 s after a slide arrives, and the speaker must be able to hold a reveal).
+- **Deterministic.** Every screen in a room runs its own copy: no `Math.random()` layouts, no timers that change slides, no state from storage.
 - **Test with the network off.** Open the built file straight from disk with Wi-Fi off; anything that changes is a bug on stage.
+- **Publishing the file on a website too?** Some static hosts treat `*.html` as routes; serve the copy as `talk.deck`. Upload the real `.html` (or `.zip`).

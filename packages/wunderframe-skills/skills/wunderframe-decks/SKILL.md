@@ -31,7 +31,7 @@ If they say "just make something", go ahead with sensible defaults and list your
 
 Then **propose before you build**: two or three possible structures in a sentence each with your recommendation, the slide count for the time (≈ 1 per minute for conference talks, 20–40 s per slide for short talks), and — once they pick — a **plan per slide** (ON THE SCREEN / VISUAL / SAY / STEPS / TIME, see `references/design.md` §1). Save the plan as `<talk-slug>-plan.md` next to the deck: it is the speaker's rehearsal sheet. One round of feedback on the plan saves many rounds on slides. Skip the plan only for a tiny deck or a pure conversion.
 
-**Read `references/design.md` before writing slides** — structure, how much text, type sizes on the canvas, colour and brand tokens, pictures, motion vs. steps, notes written for speaking, timing, and lessons from a real talk.
+**Read `references/design.md` before writing slides** — structure, how much text, type sizes on the canvas, colour and brand tokens, pictures, motion vs. steps, notes written for speaking, timing, and a final checklist.
 
 ## 2. Find out where you are running
 
@@ -124,10 +124,10 @@ Wunderframe can also present its own *stories* (scenes built in the editor, move
 
 ## Reference files
 
-- `references/design.md` — how to design the talk: plan format, structure and rhythm, text per slide, type scale, colour/brand tokens, pictures and drawings, motion vs. steps, notes, timing, lessons from a real talk, final checklist.
+- `references/design.md` — how to design the talk: plan format, structure and rhythm, text per slide, type scale, colour/brand tokens, pictures and drawings, motion vs. steps, notes, timing, final checklist.
 - `references/environments.md` — Claude Code vs. desktop vs. claude.ai: detection, the no-build path (`scripts/single.py`), where output goes, screenshots without a browser, a by-hand fallback.
 - `references/steps-and-media.md` — step rules (order, grouping, Back, what not to do), entrance timing, videos (sizes, formats, zip vs. Add video, sound, posters), YouTube/Vimeo, pictures, fonts.
-- `references/protocol.md` — the deck protocol v1 in full, `build`/`builds`, web-video `embeds`, reveal.js bridge, framework decks → one file, live data, lessons.
+- `references/protocol.md` — the deck protocol v1 in full, `build`/`builds`, web-video `embeds`, reveal.js bridge, framework decks → one file, live data, pitfalls.
 - `references/presenting.md` — what the speaker gets on stage: remote, keys, prompter, hand signs, laser, slide pictures, reload behaviour.
 
 ## Template map

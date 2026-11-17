@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: all-hands-outline-to-deck
+expected_outcome: |
+  A ready-to-upload Wunderframe deck for a 10-minute all-hands talk built from the pasted outline,
+  in the company colours, with a per-slide plan, speaker notes on every slide, build-up steps where
+  the speaker talks through points, and a built file that passes the skill's checker.
