@@ -96,7 +96,7 @@ All colour lives in the tokens at the top of `src/deck.css`. Change those, not t
 ## 6. Pictures, drawings, icons
 
 - **The speaker's own material beats stock.** Their photos, their drawings, the page from their book, their product. It is personal and the audience notices.
-- **Photos of paper** (a drawing, a handout, a book page photographed on a table): crop to the paper, then frame it as an object — `figure.paper` gives it a white mat, a shadow and a slight tilt (`--tilt`). Don't run a phone photo of a sheet of paper full-bleed: the table, the shadow and the lens distortion show.
+- **Photos of paper** (a drawing, a handout, a book page photographed on a table): crop to the paper, then frame it as an object — `figure.paper` gives it a white mat, a shadow and a slight tilt (`--tilt`); `figure.paper.tall` for one that stands upright (a portrait drawing or page) — the landscape frame would crop it. Don't run a phone photo of a sheet of paper full-bleed: the table, the shadow and the lens distortion show.
 - **Faces**: `figure.portrait` crops round; set `object-position` so the face sits in the circle.
 - **Full-bleed photos** (`.bleed`): ≥ 1920 px wide, subject away from where the caption goes.
 - **HEIC** (iPhone photos) cannot be shown by any screen — they are converted to JPEG before every build (`npm run media`; `scripts/single.py` on path B). Phone videos the same: re-encoded to a small MP4 with ffmpeg (`references/steps-and-media.md`).

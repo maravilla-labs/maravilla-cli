@@ -35,7 +35,7 @@ Also: no `Math.random()` in layouts or particles (every screen of a room runs it
 
 Where they go: `public/media/<file>.mp4`, referenced as `/media/<file>.mp4` in `index.html`. The build rewrites that to `media/…` and packs the zip.
 
-**Every video is prepared before it goes in — not optional.** Phone and editor exports are HEVC, 4K, 60 fps, `.mov`, tens of MB, with the index at the end: old screens may not decode them, they blow the 40 MB zip, and a screen that streams them shows nothing until the whole file has arrived. `npm run media` (and every `npm run build`, which runs it first) re-encodes anything that is not already a small streamable MP4 with ffmpeg — H.264 + AAC, ≤ 1920×1080, ≈ 6 Mbit/s cap, faststart — keeps the original in `originals/`, and fixes the file name in `index.html`. `node scripts/media.mjs --small` aims at 720p / 3 Mbit/s when several videos must fit the zip. No ffmpeg: it stops with the install command — install it (`brew install ffmpeg`, `apt-get install ffmpeg`, `winget install Gyan.FFmpeg`) rather than shipping the raw file. Without Node (path B), run the commands below yourself.
+**Every video is prepared before it goes in — not optional.** Phone and editor exports are HEVC, 4K, 60 fps, `.mov`, tens of MB, with the index at the end: old screens may not decode them, they blow the 100 MB zip, and a screen that streams them shows nothing until the whole file has arrived. `npm run media` (and every `npm run build`, which runs it first) re-encodes anything that is not already a small streamable MP4 with ffmpeg — H.264 + AAC, ≤ 1920×1080, ≈ 6 Mbit/s cap, faststart — keeps the original in `originals/`, and fixes the file name in `index.html`. `node scripts/media.mjs --small` aims at 720p / 3 Mbit/s when several videos must fit the zip. No ffmpeg: it stops with the install command — install it (`brew install ffmpeg`, `apt-get install ffmpeg`, `winget install Gyan.FFmpeg`) rather than shipping the raw file. Without Node (path B), run the commands below yourself.
 
 What Wunderframe does with a video named in a zip deck:
 
@@ -45,7 +45,7 @@ What Wunderframe does with a video named in a zip deck:
 | in the zip, > 8 MB | stored as a library video, played from the screen's own storage (pre-loaded when backstage opens) |
 | not in the zip / bigger than the zip allows | a slot: after uploading, **Videos in this presentation → Add video** with that file name (≤ 1 GB). Until then the slide shows the poster. |
 
-The build decides this for you within the limits (zip ≤ 40 MB, page ≤ 25 MB) and prints which videos to add by hand.
+The build decides this for you within the limits (zip ≤ 100 MB, page ≤ 25 MB) and prints which videos to add by hand.
 
 Rules of thumb:
 
@@ -66,7 +66,7 @@ ffmpeg -i in.mov -map 0:v:0 -map 0:a:0? \
 # tighter (zip budget, many videos): 1280×720, -crf 26 -maxrate 3M -bufsize 6M
 # already H.264 MP4, only slow to start: ffmpeg -i in.mp4 -c copy -movflags +faststart out.mp4
 ```
-- Always give a `poster` (a JPEG/WebP from `src/assets/`, inlined) — it is what the slide shows before Next, while a slot is empty, and in the slide picture on the remote.
+- Every video needs a `poster` (a JPEG/WebP from `src/assets/`, inlined) — `npm run media` makes one (`src/assets/<video>-poster.jpg`, a frame ~1 s in) and adds it to any `<video>` without one; replace the file to pick a better frame. It is what the slide shows before Next, while a slot is empty, and in the slide picture on the remote.
 - `muted playsinline` on every video. Sound is controlled for you: the screen sends `audio on` when that stage plays sound and the speaker's remote has sound on; the helper unmutes. Never rely on unmuted autoplay.
 - Background loops: `<video autoplay muted loop playsinline>` without `data-wf-play`.
 - **YouTube / Vimeo**: a plain embed `<iframe src="https://www.youtube-nocookie.com/embed/<id>" data-wf-play>` works. It cannot play *inside* the sealed deck (the sandbox is inherited: no origin, no referrer — YouTube refuses), so the helper blanks it and the **screen draws the real player above the slide** at the same spot. Add `data-wf-play` so Next starts it and Back stops it — nobody can press a play button on a stage screen (or put `autoplay=1` in the address to start it when the slide appears). Only youtube.com / youtube-nocookie.com / youtu.be / vimeo.com addresses are drawn. It still needs internet on the screen and nothing of it is kept on the device: for a talk that must not fail, download the video and use a file. Slide pictures for the remote show a dark box there.

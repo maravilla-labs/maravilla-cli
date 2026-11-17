@@ -4,7 +4,7 @@ Use this to explain to a speaker how they will run the talk, and to write notes 
 
 ## Upload and rehearse
 
-- Presenter link → *How will you present?* → **Upload my presentation** → **Upload** (HTML ≤ 25 MB, zip ≤ 40 MB; PDF/.pptx ≤ 150 MB are converted to static slides). The organizer can do the same on the session page, or put a deck on any screens at once with **Present now**.
+- Presenter link → *How will you present?* → **Upload my presentation** → **Upload** (HTML ≤ 25 MB, zip ≤ 100 MB; PDF/.pptx ≤ 150 MB are converted to static slides). The organizer can do the same on the session page, or put a deck on any screens at once with **Present now**.
 - After upload Wunderframe photographs every slide (1920×1080, all steps shown) for the remote's slide pictures and grid — up to 200 slides. A slide that animates is captured about a second after it arrives.
 - Under the deck: the bundling report for a zip (files folded in, anything missing), **Videos in this presentation**, **Preview and rehearse** (full screen, same frame as the screens, hand signs on this device's camera, *My slides* / *Full sequence* with the speaker intro and what follows, notes *below* or *left* like a prompter). **Replace** uploads a new version; screens switch and stay on the current slide. **Download** returns the file as uploaded.
 

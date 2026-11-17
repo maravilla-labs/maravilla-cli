@@ -157,6 +157,13 @@ const sections = (html.match(/<section\b/gi) || []).length;
 const notes = (html.match(/class\s*=\s*["'][^"']*\bnotes\b|\sdata-notes\s*=\s*["']\s*[^\s"']/gi) || []).length;
 if (sections) infos.push(`${sections} slides, ${notes} with speaker notes.`);
 if (sections && notes < sections) warns.push(`${sections - notes} slide(s) without speaker notes — the prompter is empty there. Add <aside class="notes"> (or data-notes) with what to say.`);
+// Titles: the remote's slide list shows them — the template's own labels mean nothing to the speaker.
+const GENERIC = new Set(['…', '...', 'title', 'slide', 'part 1', 'context', 'the number', 'options', 'demo video', 'timeline', 'cause and effect', 'words to know', 'the quote', 'why it matters to me']);
+const titles = [...html.matchAll(/<section\b[^>]*\sdata-title\s*=\s*["']([^"']*)["']/gi)].map((m) => m[1].trim());
+const generic = [...new Set(titles.filter((t) => !t || GENERIC.has(t.toLowerCase())))];
+if (generic.length) warns.push(`Slide title(s) left from the template or empty: ${generic.map((t) => `"${t}"`).join(', ')} — give every slide a data-title that says what it is (the remote's slide list shows it).`);
+const dup = [...new Set(titles.filter((t, i) => t && titles.indexOf(t) !== i))];
+if (dup.length) warns.push(`Several slides share a title: ${dup.map((t) => `"${t}"`).join(', ')} — the speaker cannot tell them apart in the slide list.`);
 const steps = (html.match(/<[a-z][^<>]*\sdata-wf-step\b/gi) || []).length;
 const plays = (html.match(/<video\b[^<>]*\sdata-wf-play\b/gi) || []).length;
 if (steps || plays) infos.push(`${steps} step(s), ${plays} video step(s).`);

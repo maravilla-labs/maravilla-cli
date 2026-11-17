@@ -14,6 +14,10 @@
  *   so a screen can start playing while it still loads). One that is fine but not faststart is
  *   only rewrapped (no quality lost). --small: 1280×720 and ≈ 3 Mbit/s, for a tight zip budget.
  *
+ * Posters: every video gets a still (src/assets/<video>-poster.jpg, a frame ~1 s in) unless it
+ * has one, and a <video> in index.html without a poster="…" gets that one — it is what the slide
+ * shows before Next and in the remote's slide picture. Replace the file to choose another frame.
+ *
  * Originals are MOVED to originals/ (same sub-folders; never built, never uploaded), and the
  * new file names are written into index.html and src/ wherever the old ones were used.
  *
@@ -261,6 +265,22 @@ for (const file of existsSync(mediaDir) ? await readdir(mediaDir) : []) {
 	}
 }
 
+// ── posters: a still for every video, and on every <video> that has none ────
+
+const posters = []; // [video file name, poster rel path from root]
+for (const file of existsSync(mediaDir) ? await readdir(mediaDir) : []) {
+	if (!/\.(mp4|m4v)$/i.test(file)) continue;
+	const poster = path.join(root, 'src', 'assets', `${path.parse(file).name}-poster.jpg`);
+	posters.push([file, rel(poster)]);
+	if (existsSync(poster) || !tools.ffmpeg || DRY) continue;
+	await mkdir(path.dirname(poster), { recursive: true });
+	for (const at of ['1', '0']) {
+		run('ffmpeg', ['-y', '-v', 'error', '-ss', at, '-i', path.join(mediaDir, file), '-frames:v', '1', '-vf', "scale='min(1920,iw)':-2", '-q:v', '3', poster]);
+		if (existsSync(poster) && (await stat(poster)).size > 0) break;
+	}
+	if (existsSync(poster)) done.push(`poster for media/${file}: ${rel(poster)} (replace it to pick another frame)`);
+}
+
 // ── the new names, wherever the old ones were written ───────────────────────
 
 if (renames.length && !DRY) {
@@ -283,6 +303,22 @@ if (renames.length && !DRY) {
 			await writeFile(f, text);
 			done.push(`updated the file names in ${rel(f)}`);
 		}
+	}
+}
+
+// A <video> naming media/<file> without a poster gets the one made above.
+const indexFile = path.join(root, 'index.html');
+if (!DRY && posters.length && existsSync(indexFile)) {
+	let text = await readFile(indexFile, 'utf8');
+	const was = text;
+	text = text.replace(/<video\b[^>]*>/gi, (tag) => {
+		if (/\sposter\s*=/i.test(tag)) return tag;
+		const hit = posters.find(([f, p]) => existsSync(path.join(root, p)) && new RegExp(`media/${f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["'\\s?#]`).test(tag));
+		return hit ? tag.replace(/<video\b/i, `<video poster="./${hit[1]}"`) : tag;
+	});
+	if (text !== was) {
+		await writeFile(indexFile, text);
+		done.push('added the posters to the <video> tags without one in index.html');
 	}
 }
 

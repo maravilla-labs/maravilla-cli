@@ -1,13 +1,13 @@
 ---
 name: wunderframe-decks
-description: "Create presentations (slide decks / talks / keynotes / school presentations / pitches) that a speaker uploads to Wunderframe and drives from their phone, the lectern, a clicker or hand signs. Starts by asking about the talk (audience, length, goal, the one take-away, brand, existing material — outlines, scripts, notes, pictures, logos, old slides, videos), proposes a structure and a per-slide plan, then builds an HTML deck on a 1920×1080 canvas with design guidance for big rooms, speaker notes for the remote and prompter, build-up steps (data-wf-step), videos and YouTube/Vimeo players that start on Next (data-wf-play), and fully offline output: ONE self-contained HTML file (fonts, pictures, scripts inlined) or a .zip with videos. Works in Claude Code, the Claude desktop app and claude.ai — with npm (Vite, live preview that behaves like a Wunderframe screen and the remote) or without (a Python script builds the same single file). Ships a starter template with layouts (title, split, statement, quote, timeline, flow, key terms, cards, full-bleed), a checker for the 25 MB / 40 MB / offline / protocol / slide-picture rules. Use this whenever someone wants to make, convert, fix, redesign or prepare a talk or presentation for Wunderframe — 'my slides for the conference', 'turn my outline into a deck', 'help me with my presentation about…', 'make my reveal.js deck work on the stage', 'why does my font not show on the screen', 'add a video to my presentation', 'speaker notes on my phone' — even if they do not say 'deck' or 'Wunderframe protocol'."
+description: "Create presentations (slide decks / talks / keynotes / school presentations / pitches) that a speaker uploads to Wunderframe and drives from their phone, the lectern, a clicker or hand signs. Starts by asking about the talk (audience, length, goal, the one take-away, brand, existing material — outlines, scripts, notes, pictures, logos, old slides, videos), proposes a structure and a per-slide plan, then builds an HTML deck on a 1920×1080 canvas with design guidance for big rooms, speaker notes for the remote and prompter, build-up steps (data-wf-step), videos and YouTube/Vimeo players that start on Next (data-wf-play), and fully offline output: ONE self-contained HTML file (fonts, pictures, scripts inlined) or a .zip with videos. Works in Claude Code, the Claude desktop app and claude.ai — with npm (Vite, live preview that behaves like a Wunderframe screen and the remote) or without (a Python script builds the same single file). Ships a starter template with layouts (title, split, statement, quote, timeline, flow, key terms, cards, full-bleed), a checker for the 25 MB / 100 MB / offline / protocol / slide-picture rules. Use this whenever someone wants to make, convert, fix, redesign or prepare a talk or presentation for Wunderframe — 'my slides for the conference', 'turn my outline into a deck', 'help me with my presentation about…', 'make my reveal.js deck work on the stage', 'why does my font not show on the screen', 'add a video to my presentation', 'speaker notes on my phone' — even if they do not say 'deck' or 'Wunderframe protocol'."
 ---
 
 # Wunderframe decks
 
 Wunderframe plays a speaker's presentation on the venue's screens. The speaker uploads it on their presenter link (or the organizer on the session page / *Present now*), and their phone, the room's lectern, a presentation clicker or hand signs become the remote: slide picture + next slide, notes as a prompter, a step counter, a laser pointer.
 
-What Wunderframe accepts: **one self-contained `.html` (≤ 25 MB)**, a **`.zip` with `index.html` + files (≤ 40 MB)**, or a PDF / `.pptx` (converted to static slides — animations and steps are lost). HTML is the format that keeps everything, so this skill builds HTML.
+What Wunderframe accepts: **one self-contained `.html` (≤ 25 MB)**, a **`.zip` with `index.html` + files (≤ 100 MB)**, or a PDF / `.pptx` (converted to static slides — animations and steps are lost). HTML is the format that keeps everything, so this skill builds HTML.
 
 The four facts that shape every technical decision:
 
@@ -72,8 +72,8 @@ Authoring lives in `index.html`, one `<section>` per slide inside `<main class="
 ```
 
 - **Notes** (`<aside class="notes">`, or `data-notes="…"` on the section) are the prompter on the phone/lectern — written for *speaking*, ≤ 4000 chars, every slide. The checker counts them.
-- **Title** (`data-title`) is what the remote's slide list shows; else the first heading.
-- **Layouts** (class on the section): `title`, `divider`, `split`, `statement`, `quote` (also `quote split` with a picture), `bleed`, `closing`; modifier `top` (content from the top). **Building blocks**: `header.head` + `.kicker` + `h2` with `.hl`, `ul.points` (`.icons`), `ol.numbered`, `dl.terms` (glossary), `ol.timeline`, `.flow` (boxes with arrows), `.cards` (`--cols`), `.card`, `.callout`, `.chip`, `figure.paper`, `figure.portrait`, `.badge` + inline-SVG icons from the sprite, `.progress`, `.foot`. Each is documented where it is defined in `src/deck.css`; the template's slides show each one. Delete the slides you don't need.
+- **Title** (`data-title`) is what the remote's slide list shows — give **every** slide its own short, telling one ("Why: 3 weeks", not the template's "Title" or "Part 1"); the speaker jumps by it. The checker warns about template labels and duplicates.
+- **Layouts** (class on the section): `title`, `divider`, `split`, `statement`, `quote` (also `quote split` with a picture), `bleed`, `closing`; modifier `top` (content from the top). **Building blocks**: `header.head` + `.kicker` + `h2` with `.hl`, `ul.points` (`.icons`), `ol.numbered`, `dl.terms` (glossary), `ol.timeline`, `.flow` (boxes with arrows), `.cards` (`--cols`), `.card`, `.callout`, `.chip`, `figure.paper` (`.tall` for an upright picture), `figure.portrait`, `.badge` + inline-SVG icons from the sprite, `.progress`, `.foot`. Each is documented where it is defined in `src/deck.css`; the template's slides show each one. Delete the slides you don't need.
 - **Theme** = the tokens at the top of `src/deck.css` (colours with meanings, type scale, radius, stage background; `<html data-theme="light">` for bright rooms). Map the brand onto them first.
 - **Fonts** ship in `src/fonts/` (Inter + JetBrains Mono, variable, latin + latin-ext) and are inlined by both builds. A brand font: copy its `.woff2` there and add an `@font-face` in `src/fonts/fonts.css`. Never link Google Fonts.
 - **Pictures** in `src/assets/`, referenced relatively; **videos** in `public/media/`, referenced as `/media/<file>.mp4`. **They are always prepared before they go in** — `npm run media`, which every `npm run build` runs first: HEIC/AVIF/TIFF → JPEG and photos ≤ 2560 px; every video → a small streamable MP4 with ffmpeg (H.264 + AAC, ≤ 1080p, faststart); originals kept in `originals/`, references fixed. If it stops because a tool is missing, install it (it prints the command) — never ship a HEIC or a raw phone video. Path B: `single.py` handles pictures; videos via `node scripts/media.mjs` or the ffmpeg commands in `references/steps-and-media.md`.
@@ -90,7 +90,7 @@ npm run dev          # opens http://localhost:5173/preview/
 
 The preview stands in for a Wunderframe screen **and** the remote: the deck framed as on a screen, Next/Back (→ Space ←), "Slide n of m · step b of m", the notes as the phone shows them, a **Slides** grid (G), **Reload screen** (R — the deck must come back on the same slide), a sound toggle. It hot-reloads as you edit. The deck alone is at `/` (`#5` jumps to slide 5).
 
-Look at the slides, don't trust the markup: with a browser tool, check the grid for overflow, tiny text and empty slides; without one, see "Look at the slides" in `references/environments.md`.
+Look at the slides, don't trust the markup: with a browser tool, check the grid for overflow, tiny text and empty slides; without one, `npm run shots` after building (every slide as a PNG in a new `dist/shots-<time>/` folder — look only at the newest) and fix what you see.
 
 ## 5. Build the offline file
 
@@ -144,6 +144,7 @@ preview/               the screen + remote harness (dev and built modes, slide-p
 scripts/media.mjs      pictures → JPEG ≤ 2560 px, videos → small streamable MP4 (ffmpeg); run by build
 scripts/build.mjs      path A: media, then Vite single file + zip + checks
 scripts/single.py      path B: the same without npm (Python standard library)
-scripts/check.mjs      offline / size / protocol / media / motion / Safari 14 checks
+scripts/check.mjs      offline / size / protocol / media / motion / titles / Safari 14 checks
+scripts/shots.mjs      every slide as a PNG (headless Chrome or Playwright) to look at
 scripts/serve.mjs      sealed rehearsal of the built file (Node only, no packages)
 ```

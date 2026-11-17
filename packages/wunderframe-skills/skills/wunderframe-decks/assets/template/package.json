@@ -8,6 +8,7 @@
     "media": "node scripts/media.mjs",
     "build": "node scripts/build.mjs",
     "check": "node scripts/check.mjs",
+    "shots": "node scripts/shots.mjs",
     "preview": "node scripts/serve.mjs"
   },
   "devDependencies": {

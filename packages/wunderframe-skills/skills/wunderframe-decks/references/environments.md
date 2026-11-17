@@ -50,7 +50,7 @@ Python 3 standard library only (Pillow optional). It does what the Vite build do
 - `<link rel="stylesheet">` → `<style>`, with `@import` and `url()` (fonts, backgrounds) inlined as `data:` URLs;
 - `<script type="module" src="./src/deck.js">` → one inline module, with its relative `import`s bundled (the template's engine imports only `./wf-runtime.js`);
 - pictures in `src`, `poster`, `srcset`, `style="…url()…"` → `data:` URLs; photos larger than 2560 px are shrunk, HEIC/AVIF/TIFF converted (Pillow; on a Mac, `sips` when Pillow can't read HEIC);
-- videos referenced as `/media/<file>` (in `public/media/`) → a `.zip` with `index.html` + `media/…`, within the same limits as `npm run build` (zip ≤ 40 MB, page ≤ 25 MB, a video ≤ 8 MB is folded into the page);
+- videos referenced as `/media/<file>` (in `public/media/`) → a `.zip` with `index.html` + `media/…`, within the same limits as `npm run build` (zip ≤ 100 MB, page ≤ 25 MB, a video ≤ 8 MB is folded into the page);
 - HTML comments are dropped; then the basic checks run, and `scripts/check.mjs` too if `node` exists.
 
 ```bash
@@ -67,18 +67,16 @@ What it cannot do, so don't ask it to: resolve npm packages (`import x from 'som
 
 ## Look at the slides
 
-With a browser tool or the dev preview: open the **Slides** grid. Without one, if a headless Chrome or Playwright exists:
+With a browser tool or the dev preview: open the **Slides** grid. Without one:
 
 ```bash
-# every slide as a picture, all steps shown (the helper switched off, as for the remote's slide pictures)
-python3 - <<'EOF'
-s = open('dist/my-talk.html').read()
-open('dist/pictures.html', 'w').write(s.replace('<head>', '<head><script>window.__wfDeck={sync:function(){}}</script>', 1))
-EOF
-for n in $(seq 1 12); do playwright screenshot --viewport-size 1920,1080 --wait-for-timeout 1000 "file://$PWD/dist/pictures.html#$n" dist/slide-$n.png; done
+node scripts/shots.mjs                    # every slide, all steps shown → dist/shots-<time>/slide-NN.png
+node scripts/shots.mjs --steps none       # each slide as it arrives, before the first Next
 ```
 
-Then look at the PNGs (overflow, text too small, empty areas, pictures badly cropped) and fix before handing over. Delete `pictures.html` and the PNGs afterwards — they are not for upload.
+It finds a browser by itself (Chrome/Chromium headless — `CHROME=/path` to name one — then Playwright with the installed Chrome, then Playwright's own), checks that each picture was really written, and puts each run in a **new folder** — look only at the newest one, never at a folder another run (or another agent) wrote. No browser at all: it says so; then `npx playwright install chromium` if the network allows, or rely on the layouts and the checker.
+
+Look at every PNG (text over the edge, text too small, empty areas, pictures badly cropped), fix, build, shoot again. The shots are not for upload.
 
 ## Path C: by hand (no Python, no Node)
 

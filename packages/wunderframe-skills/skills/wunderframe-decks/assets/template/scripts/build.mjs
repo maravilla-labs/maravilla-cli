@@ -8,7 +8,7 @@
  *     first prepares pictures and videos (scripts/media.mjs), then runs the checks (scripts/check.mjs).
  *
  * Wunderframe limits (spec "Presenting an uploaded deck" / "Videos in a deck"):
- *   HTML file ≤ 25 MB · zip ≤ 40 MB · a video ≤ 8 MB inside a zip is folded into the page
+ *   HTML file ≤ 25 MB · zip ≤ 100 MB · a video ≤ 8 MB inside a zip is folded into the page
  *   (base64, +33 %), a bigger one is kept as a library video · a video left out of the zip
  *   becomes a slot you fill with "Add video" (≤ 1 GB, MP4 H.264/AAC best) after uploading.
  */
@@ -22,7 +22,7 @@ import { spawnSync } from 'node:child_process';
 
 const MB = 1024 * 1024;
 const HTML_MAX = 25 * MB;
-const ZIP_MAX = 40 * MB;
+const ZIP_MAX = 100 * MB;
 const INLINE_MAX = 8 * MB;
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');

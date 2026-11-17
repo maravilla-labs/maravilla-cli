@@ -17,7 +17,7 @@ What it does, mirroring `npm run build` (Vite + vite-plugin-singlefile + scripts
                                            (bare npm imports are refused — they need Vite)
   - pictures and fonts (src, poster, srcset, url(…), style="…")  → data: URLs
   - videos referenced as "/media/<file>" (in public/media/) → media/<file> + a zip, with the same
-    limits Wunderframe applies (zip ≤ 40 MB, page ≤ 25 MB, a video ≤ 8 MB is folded into the page)
+    limits Wunderframe applies (zip ≤ 100 MB, page ≤ 25 MB, a video ≤ 8 MB is folded into the page)
   - HTML comments are dropped (author notes and commented-out slides do not go on stage)
 It does NOT transpile: write JavaScript Safari 14 runs (the template's deck.js does).
 Then it runs basic checks, and scripts/check.mjs too when `node` is available.
@@ -36,7 +36,7 @@ import zipfile
 
 MB = 1024 * 1024
 HTML_MAX = 25 * MB
-ZIP_MAX = 40 * MB
+ZIP_MAX = 100 * MB
 INLINE_MAX = 8 * MB
 
 MIME = {
