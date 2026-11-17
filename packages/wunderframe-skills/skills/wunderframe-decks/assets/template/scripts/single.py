@@ -3,7 +3,7 @@
 Build the deck WITHOUT npm: one self-contained HTML file (or a .zip with videos).
 
     python3 scripts/single.py                       # → dist/<name>.html (+ dist/<name>.zip with videos)
-    python3 scripts/single.py --out /mnt/user-data/outputs
+    python3 scripts/single.py --out <folder the user downloads from>
     python3 scripts/single.py path/to/talk --name my-talk
 
 For places where `npm install` cannot run (claude.ai and the Claude desktop app run skills in a

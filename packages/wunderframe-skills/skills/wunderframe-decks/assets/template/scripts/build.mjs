@@ -5,7 +5,7 @@
  *   npm run build
  *     → dist/<name>.html   one self-contained file (upload this when the deck has no videos)
  *     → dist/<name>.zip    index.html + media/… (upload this when the deck has videos)
- *     then runs the checks (scripts/check.mjs).
+ *     first prepares pictures and videos (scripts/media.mjs), then runs the checks (scripts/check.mjs).
  *
  * Wunderframe limits (spec "Presenting an uploaded deck" / "Videos in a deck"):
  *   HTML file ≤ 25 MB · zip ≤ 40 MB · a video ≤ 8 MB inside a zip is folded into the page
@@ -29,6 +29,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 const name = (pkg.name || 'deck').replace(/^@[^/]+\//, '');
 const dist = path.join(root, 'dist');
+
+// Pictures and videos first: HEIC → JPEG, oversized photos shrunk, videos → small streamable MP4 (ffmpeg).
+const prep = spawnSync(process.execPath, [path.join(root, 'scripts', 'media.mjs')], { stdio: 'inherit' });
+if (prep.status !== 0) {
+	console.error('\nFix the pictures/videos above first (npm run media), then build again.');
+	process.exit(1);
+}
 
 await build({ root, logLevel: 'warn' });
 

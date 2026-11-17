@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --open /preview/",
+    "media": "node scripts/media.mjs",
     "build": "node scripts/build.mjs",
     "check": "node scripts/check.mjs",
     "preview": "node scripts/serve.mjs"

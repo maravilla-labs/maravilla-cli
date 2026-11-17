@@ -35,6 +35,8 @@ Also: no `Math.random()` in layouts or particles (every screen of a room runs it
 
 Where they go: `public/media/<file>.mp4`, referenced as `/media/<file>.mp4` in `index.html`. The build rewrites that to `media/…` and packs the zip.
 
+**Every video is prepared before it goes in — not optional.** Phone and editor exports are HEVC, 4K, 60 fps, `.mov`, tens of MB, with the index at the end: old screens may not decode them, they blow the 40 MB zip, and a screen that streams them shows nothing until the whole file has arrived. `npm run media` (and every `npm run build`, which runs it first) re-encodes anything that is not already a small streamable MP4 with ffmpeg — H.264 + AAC, ≤ 1920×1080, ≈ 6 Mbit/s cap, faststart — keeps the original in `originals/`, and fixes the file name in `index.html`. `node scripts/media.mjs --small` aims at 720p / 3 Mbit/s when several videos must fit the zip. No ffmpeg: it stops with the install command — install it (`brew install ffmpeg`, `apt-get install ffmpeg`, `winget install Gyan.FFmpeg`) rather than shipping the raw file. Without Node (path B), run the commands below yourself.
+
 What Wunderframe does with a video named in a zip deck:
 
 | video | result |
@@ -47,8 +49,23 @@ The build decides this for you within the limits (zip ≤ 40 MB, page ≤ 25 MB)
 
 Rules of thumb:
 
-- **MP4, H.264 video + AAC audio**, 1080p or 720p. WebM/MOV are accepted but Wunderframe plays a 720p MP4 copy of them. MKV/AVI: convert first (`ffmpeg -i in.mov -c:v libx264 -crf 22 -preset slow -c:a aac -b:a 160k -movflags +faststart out.mp4`).
-- **Faststart.** Many exports put the MP4's index (`moov`) at the end; a screen that streams the file (older players, the web player, before pre-loading finished) then shows nothing until all of it has arrived. The checker warns; fix without re-encoding: `ffmpeg -i in.mp4 -c copy -movflags +faststart out.mp4`.
+- **MP4, H.264 video + AAC audio**, 1080p or 720p, faststart — what `npm run media` produces. (WebM/MOV uploaded as they are: Wunderframe plays a 720p MP4 copy; better to send the right file.)
+- A clip that only plays a few seconds on a slide: cut it first (`ffmpeg -ss 12 -to 27 -i in.mp4 …` with the options below) — every second is zip budget.
+- The commands, for path B or by hand:
+
+```bash
+# a photo → JPEG, ≤ 2560 px, upright (any of these)
+sips -s format jpeg -s formatOptions 82 -Z 2560 in.heic --out out.jpg                    # macOS
+magick in.heic -auto-orient -resize '2560x2560>' -quality 82 out.jpg                     # ImageMagick
+heif-convert -q 82 in.heic out.jpg                                                        # libheif
+# a video → small, streamable MP4 (H.264 + AAC, ≤ 1080p, faststart)
+ffmpeg -i in.mov -map 0:v:0 -map 0:a:0? \
+  -vf "scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2" \
+  -c:v libx264 -profile:v high -pix_fmt yuv420p -crf 23 -preset medium -maxrate 6M -bufsize 12M \
+  -c:a aac -b:a 128k -ac 2 -movflags +faststart out.mp4
+# tighter (zip budget, many videos): 1280×720, -crf 26 -maxrate 3M -bufsize 6M
+# already H.264 MP4, only slow to start: ffmpeg -i in.mp4 -c copy -movflags +faststart out.mp4
+```
 - Always give a `poster` (a JPEG/WebP from `src/assets/`, inlined) — it is what the slide shows before Next, while a slot is empty, and in the slide picture on the remote.
 - `muted playsinline` on every video. Sound is controlled for you: the screen sends `audio on` when that stage plays sound and the speaker's remote has sound on; the helper unmutes. Never rely on unmuted autoplay.
 - Background loops: `<video autoplay muted loop playsinline>` without `data-wf-play`.
@@ -58,9 +75,9 @@ Rules of thumb:
 ## Pictures
 
 - Put them in `src/assets/` and reference them relatively (`./src/assets/x.jpg`) — in `<img>`, CSS `url()`, or `poster`. Both builds inline them.
-- Budget: the whole page ≤ 25 MB and base64 adds a third. A full-screen photo needs ≤ 2560 px width; JPEG q≈80 or WebP. A 20-photo deck at ~400 KB each is fine; 20 straight-from-camera JPEGs are not. `scripts/single.py` shrinks photos over 2560 px when Pillow is available; with npm, shrink them yourself first.
-- **No AVIF, no HEIC** (Safari 14-class screens can't decode AVIF; no browser shows HEIC, the iPhone default). WebP, JPEG, PNG, SVG are safe.
-- Shrinking / converting: `sips -Z 2560 -s format jpeg -s formatOptions 80 in.heic --out out.jpg` (macOS), `cwebp -q 80 -resize 2560 0 in.jpg -o out.webp`, or Pillow (`ImageOps.exif_transpose` first, so phone photos stay upright).
+- Budget: the whole page ≤ 25 MB and base64 adds a third. A full-screen photo needs ≤ 2560 px width; JPEG q≈80 or WebP. A 20-photo deck at ~400 KB each is fine; 20 straight-from-camera JPEGs are not.
+- **HEIC must become JPEG — always.** iPhones save HEIC by default and no screen (no browser) can show it; AVIF fails on Safari-14-class screens. `npm run media` (run by every build) converts HEIC/HEIF/AVIF/TIFF/BMP in `src/assets/` to JPEG with whatever the machine has (sips, ImageMagick, heif-convert, ffmpeg), shrinks photos over 2560 px, keeps the originals in `originals/` and fixes the references. `scripts/single.py` does the same for pictures (Pillow, or `sips` on a Mac). Neither can: convert by hand (commands above) or ask the speaker to export JPEGs ("Most Compatible" in the iPhone camera settings). The checker refuses a HEIC that is still in the deck.
+- WebP, JPEG, PNG, SVG are safe.
 - A photo of a drawing or a page: crop to the paper and use `figure.paper` (white mat, shadow, `--tilt`); a face: `figure.portrait` with `object-position` on the face.
 
 ## Fonts

@@ -6,8 +6,10 @@ The same skill runs in Claude Code (terminal or IDE), the Claude desktop app and
 
 ```bash
 node -v; npm -v; python3 -V                      # what can run
-ls -d /mnt/user-data/outputs 2>/dev/null         # exists → a claude.ai / desktop-chat sandbox
+ffmpeg -version | head -1                        # videos can be prepared (npm run media)
 ```
+
+Whether you are in a chat sandbox, and where the user's files are and where results must go so they can download them, is said by that environment itself (its instructions, the paths of the files they attached). Use what it says; if nothing says it, ask the user where they want the file rather than guessing a path.
 
 Then, in the deck folder, try the best path once with a time limit:
 
@@ -34,10 +36,10 @@ Do not keep retrying a failing install, and don't install packages globally to w
 
 **claude.ai on the web, and chats in the desktop app** — skills run in a sandboxed Linux container.
 - The skill's own files may be read-only: copy the template to a working folder first (`cp -r <skill>/assets/template /tmp/<talk-slug>` or your home folder).
-- The user's attachments are under `/mnt/user-data/uploads/` (when that folder exists). A zip of material: unpack it into its own folder and look at everything before planning — pictures, logos, old slides, notes.
-- Network may be off or limited, so path A may fail → path B. Pillow is usually installed, so B can shrink photos and (with `pillow-heif`) convert HEIC; check with `python3 -c "import PIL"`.
+- The user's attachments are wherever that environment puts uploads (see above). A zip of material: unpack it into its own folder and look at everything before planning — pictures, logos, old slides, notes.
+- Network may be off or limited, so path A may fail → path B. Pillow is often installed, so B can shrink photos and (with `pillow-heif`) convert HEIC; check with `python3 -c "import PIL"`. ffmpeg may be missing: then a video cannot be prepared here — say so, and either leave it out of the zip (the speaker adds it on Wunderframe with **Add video**, after converting it on their computer) or ask them to send an MP4 that already fits.
 - There is no browser for you to look at the slides. Lean on the layouts as they are (they are sized for the canvas), keep text within the limits in `design.md`, and run the checks. If `playwright` or a Chrome binary happens to exist, screenshot the built file (see "Look at the slides" below).
-- **Deliver into `/mnt/user-data/outputs/`** — that is what the user can download. `python3 scripts/single.py --out /mnt/user-data/outputs` writes the deck straight there; copy the plan too (`<talk-slug>-plan.md`). Then name the files in your reply so they find them, and tell them the next step: download, then upload on their Wunderframe presenter link.
+- **Deliver into the folder the environment names for the user's downloads** (`python3 scripts/single.py --out <that folder>` writes the deck straight there); copy the plan too (`<talk-slug>-plan.md`). Then name the files in your reply so they find them, and tell them the next step: download, then upload on their Wunderframe presenter link.
 
 **Anywhere, when the user wants the source too** — zip the deck folder without `node_modules/` and `dist/` and deliver it next to the built file, so they (or a later session) can keep editing.
 
@@ -53,9 +55,11 @@ Python 3 standard library only (Pillow optional). It does what the Vite build do
 
 ```bash
 python3 scripts/single.py                                  # → dist/<name>.html (+ .zip with videos)
-python3 scripts/single.py --out /mnt/user-data/outputs     # straight to the downloads folder
+python3 scripts/single.py --out <downloads folder>         # straight to where the user downloads
 python3 scripts/single.py --name my-talk --max-px 1920     # name the file, smaller photos
 ```
+
+`single.py` converts and shrinks pictures but does **not** re-encode videos: before it, run `node scripts/media.mjs` when Node exists (no npm packages needed), else the ffmpeg commands in `steps-and-media.md`.
 
 What it cannot do, so don't ask it to: resolve npm packages (`import x from 'some-package'` is refused — copy the file into `src/` and import it relatively), transpile (write JavaScript that Safari 14 runs: no `.at()`, `structuredClone`, `Object.hasOwn`, top-level `await`), or run Svelte/React/Tailwind. For those decks you need path A.
 

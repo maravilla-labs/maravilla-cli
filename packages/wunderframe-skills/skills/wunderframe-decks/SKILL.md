@@ -35,7 +35,7 @@ Then **propose before you build**: two or three possible structures in a sentenc
 
 ## 2. Find out where you are running
 
-Claude Code (terminal / IDE / desktop Code session) runs on the speaker's computer; claude.ai and desktop chats run in a sandbox that may have no network, no browser, and where the user downloads the result from `/mnt/user-data/outputs/`. Check with commands — `node -v`, `python3 -V`, `ls -d /mnt/user-data/outputs`, and one `npm install` attempt in the deck folder — then pick:
+Claude Code (terminal / IDE / desktop Code session) runs on the speaker's computer; claude.ai and desktop chats run in a sandbox that may have no network and no browser, and the user downloads the result from the folder that environment names. Check with commands — `node -v`, `python3 -V`, `ffmpeg -version`, and one `npm install` attempt in the deck folder — then pick:
 
 - **A. npm works** → the full workflow below (`npm run dev / build / preview`).
 - **B. no npm** (missing, offline, install fails) → same template, built with `python3 scripts/single.py` (standard library only) into the same single file / zip.
@@ -76,7 +76,7 @@ Authoring lives in `index.html`, one `<section>` per slide inside `<main class="
 - **Layouts** (class on the section): `title`, `divider`, `split`, `statement`, `quote` (also `quote split` with a picture), `bleed`, `closing`; modifier `top` (content from the top). **Building blocks**: `header.head` + `.kicker` + `h2` with `.hl`, `ul.points` (`.icons`), `ol.numbered`, `dl.terms` (glossary), `ol.timeline`, `.flow` (boxes with arrows), `.cards` (`--cols`), `.card`, `.callout`, `.chip`, `figure.paper`, `figure.portrait`, `.badge` + inline-SVG icons from the sprite, `.progress`, `.foot`. Each is documented where it is defined in `src/deck.css`; the template's slides show each one. Delete the slides you don't need.
 - **Theme** = the tokens at the top of `src/deck.css` (colours with meanings, type scale, radius, stage background; `<html data-theme="light">` for bright rooms). Map the brand onto them first.
 - **Fonts** ship in `src/fonts/` (Inter + JetBrains Mono, variable, latin + latin-ext) and are inlined by both builds. A brand font: copy its `.woff2` there and add an `@font-face` in `src/fonts/fonts.css`. Never link Google Fonts.
-- **Pictures** in `src/assets/`, referenced relatively; **videos** in `public/media/`, referenced as `/media/<file>.mp4`. Convert HEIC to JPEG; ≤ 2560 px.
+- **Pictures** in `src/assets/`, referenced relatively; **videos** in `public/media/`, referenced as `/media/<file>.mp4`. **They are always prepared before they go in** — `npm run media`, which every `npm run build` runs first: HEIC/AVIF/TIFF → JPEG and photos ≤ 2560 px; every video → a small streamable MP4 with ffmpeg (H.264 + AAC, ≤ 1080p, faststart); originals kept in `originals/`, references fixed. If it stops because a tool is missing, install it (it prints the command) — never ship a HEIC or a raw phone video. Path B: `single.py` handles pictures; videos via `node scripts/media.mjs` or the ffmpeg commands in `references/steps-and-media.md`.
 - **Canvas**: 1920×1080, scaled as a whole and letterboxed into whatever box the room's layout gives the deck (a split LED wall, a side band) — keep important content off the outer edges. Keep it 16:9: the laser pointer assumes it.
 - **Motion**: entrances (`class="enter" style="--d:.2"`) settle within ~0.8 s; anything the speaker talks through is a step.
 
@@ -94,7 +94,7 @@ Look at the slides, don't trust the markup: with a browser tool, check the grid 
 
 ## 5. Build the offline file
 
-Path A: `npm run build`. Path B: `python3 scripts/single.py` (add `--out /mnt/user-data/outputs` in a claude.ai / desktop-chat sandbox).
+Path A: `npm run build` (prepares pictures and videos first). Path B: `node scripts/media.mjs` if Node exists (or the ffmpeg commands), then `python3 scripts/single.py` (`--out <folder>` to write straight to where the user downloads).
 
 - `dist/<name>.html` — everything inlined: JS, CSS, pictures, fonts. Upload this when the deck has **no videos**.
 - `dist/<name>.zip` — only when the deck references videos: `index.html` + `media/…`. Upload the **zip**; Wunderframe unpacks it and plays the videos from its library. The build says which videos fit and which to add afterwards with **Add video**.
@@ -110,9 +110,9 @@ Same harness, but the deck is `sandbox="allow-scripts"`, the step helper is inje
 
 ## 7. Hand it over
 
-Deliver the built file where the user can reach it (their folder in Claude Code; `/mnt/user-data/outputs/` in a sandbox — with the plan `.md`, and the source folder zipped without `node_modules`/`dist` if they want to keep editing). Then tell the speaker, briefly:
+Deliver the built file where the user can reach it (their folder in Claude Code; in a chat sandbox, the downloads folder that environment names — ask if it names none), with the plan `.md`, and the source folder zipped without `node_modules`/`dist`/`originals` if they want to keep editing. Then tell the speaker, briefly:
 
-- Upload `<name>.html` (or the `.zip` if it has videos) on the presenter link → *Upload my presentation* → **Upload**, then **Preview and rehearse** there. Wunderframe photographs every slide for the remote.
+- Upload `<name>.html` (or the `.zip` if it has videos) on the presenter link → *Upload my presentation* → **Upload**, then **Preview and rehearse** there. The file goes straight to Wunderframe's storage; a zip is then **unpacked** for a few seconds (its big videos become library videos). Wunderframe photographs every slide for the remote.
 - **Or fetch it from an address** when the talk keeps changing or a pipeline builds it: publish the built file at an `https://` URL and use **Fetch from address** on the presenter link or session page. Wunderframe keeps its own copy, so screens never depend on that site; **Fetch again** pulls a new version. A fetch is capped at **25 MB** (a bigger zip must be uploaded). Hosts that treat `*.html` as routes: serve it as e.g. `talk.deck` — Wunderframe checks the bytes, not the name.
 - Videos left out of the zip: **Videos in this presentation** → **Add video** per file name (MP4 H.264/AAC, ≤ 1 GB).
 - A new version: **Replace** — screens reload it and the remote puts it back on the current slide.
@@ -141,7 +141,8 @@ src/wf-runtime.js      Wunderframe's step/sound/web-video helper, verbatim (do n
 src/assets/            pictures → inlined
 public/media/          videos → zip; reference as "/media/<file>.mp4"
 preview/               the screen + remote harness (dev and built modes, slide-picture grid)
-scripts/build.mjs      path A: Vite single file + zip + checks
+scripts/media.mjs      pictures → JPEG ≤ 2560 px, videos → small streamable MP4 (ffmpeg); run by build
+scripts/build.mjs      path A: media, then Vite single file + zip + checks
 scripts/single.py      path B: the same without npm (Python standard library)
 scripts/check.mjs      offline / size / protocol / media / motion / Safari 14 checks
 scripts/serve.mjs      sealed rehearsal of the built file (Node only, no packages)

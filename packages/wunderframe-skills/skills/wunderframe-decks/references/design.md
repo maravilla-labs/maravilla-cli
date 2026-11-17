@@ -100,7 +100,7 @@ All colour lives in the tokens at the top of `src/deck.css`. Change those, not t
 - **Photos of paper** (a drawing, a handout, a book page photographed on a table): crop to the paper, then frame it as an object — `figure.paper` gives it a white mat, a shadow and a slight tilt (`--tilt`). Don't run a phone photo of a sheet of paper full-bleed: the table, the shadow and the lens distortion show.
 - **Faces**: `figure.portrait` crops round; set `object-position` so the face sits in the circle.
 - **Full-bleed photos** (`.bleed`): ≥ 1920 px wide, subject away from where the caption goes.
-- **HEIC** (iPhone photos) cannot be shown by any screen — convert to JPEG (`sips -s format jpeg in.heic --out out.jpg` on macOS; `scripts/single.py` converts them with Pillow + pillow-heif, or `sips` on a Mac). Apply the camera's rotation (EXIF) when converting.
+- **HEIC** (iPhone photos) cannot be shown by any screen — they are converted to JPEG before every build (`npm run media`; `scripts/single.py` on path B). Phone videos the same: re-encoded to a small MP4 with ffmpeg (`references/steps-and-media.md`).
 - Size: 2560 px on the long side is plenty; JPEG q≈80. A picture used on two slides is inlined twice — fine for a few, wasteful for many large ones.
 - **Icons**: inline SVG (`<symbol>` sprite in `index.html`, `<svg class="icon"><use href="#i-star"/></svg>`). One style (all filled or all outlined), coloured by `currentColor`. **No emoji** on slides: they render differently per device and old screens may lack a colour emoji font.
 - **Diagrams** instead of bullet lists where there is a sequence or a cause: `ol.timeline` for dates, `.flow` for "this led to that", `.cards` for options side by side, `dl.terms` for a glossary.
@@ -139,7 +139,7 @@ Put a timing line in the plan ("Slides 1–2 → 45 s · 3–4 → 45 s · …")
 
 ## 10. Lessons from a real talk
 
-A 5-minute school talk about a historical figure, built from a textbook page, 32 handwritten index cards and two of the student's drawings, delivered in English from German material. What worked, and what had to be fixed — generalised:
+A 5-minute school talk about a historical figure, built from a textbook page, 32 handwritten index cards and two of the student's drawings, delivered in English from German material. It was made **before Wunderframe had steps, web-video players or this template** — so its timed animations were the only way to reveal things then, not a mistake. What carries over — generalised:
 
 - **The plan file was the most useful artefact.** ON THE SCREEN / VISUAL / SAY per slide, a mapping of the grading criteria to slides, a card-to-slide map and a timing table. The speaker could rehearse from it before a single slide existed.
 - **The speaker's drawings made the deck.** Framed as paper (white mat, tilt, shadow) on the title and the quote slide, cropped round on the "why he's my hero" slide. Stock pictures would have been forgettable.
@@ -147,7 +147,7 @@ A 5-minute school talk about a historical figure, built from a textbook page, 32
 - **Diagrams instead of bullets**: a timeline for the life dates, a three-box flow (speaks up → news spreads → kids can go to school), a numbered list for the problem, ending in a pill-shaped question to the room ("Would that be fair?").
 - **The quote slide** paired the original drawing with the translated quote and a "what it means" card — the criterion was "present a quote *and explain it*".
 - **Likely questions** with short answers sat in the last slide's notes.
-- **What had to be worked around**: it was built without npm, by hand, as one HTML file — pictures as `data:` URLs, no fonts shipped (system font stack: looked different on every device), notes in `data-notes` attributes. iPhone HEIC photos had to be converted. Its entrance animations ran up to 5 s per slide with timed delays instead of steps, so the remote's slide pictures showed half-empty slides and the speaker could not pace the reveals; it used `Math.random()` for background particles and large animated blurs. The template now covers each of these: `scripts/single.py` for the no-build case (fonts and pictures inlined, HEIC converted), `data-notes` support, `.enter` with a short-delay budget, `.paper` / `.portrait` / `.terms` / `.timeline` / `.flow` / `.callout`, and checker warnings for late animations, randomness and missing notes.
+- **What the template now does for you** that this deck had to do by hand: one HTML file with everything inlined (also without npm, `scripts/single.py`), fonts shipped (it used system fonts, which look different on every device), HEIC photos converted before the build, `data-notes` read as notes. Where it timed its reveals (up to 5 s per slide), use **steps** today: the speaker sets the pace and the remote's slide pictures show complete slides. Fixed positions instead of `Math.random()` particles, no large animated blurs (old TV boxes stutter). The building blocks it invented — `.paper`, `.portrait`, `.terms`, `.timeline`, `.flow`, `.callout` — are in the template.
 
 ## 11. Before you hand it over
 
