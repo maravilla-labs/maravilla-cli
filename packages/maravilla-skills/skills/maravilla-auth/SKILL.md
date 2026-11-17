@@ -1,6 +1,6 @@
 ---
 name: maravilla-auth
-description: "Maravilla Cloud authentication. Use whenever wiring login/register/session, OAuth callbacks, resource policies, or hitting `platform.auth.*` APIs. Critical: the 3-step request-scoped contract (validate → setCurrentUser → can) — skipping any step silently breaks Layer-2 policies and owner-scoped reads return empty with no error."
+description: "Maravilla Cloud authentication. Use whenever wiring login/register/session, OAuth callbacks, resource policies, user profiles (`getProfile` / `setProfile`, tenant or workspace ids mirrored onto the profile), or hitting `platform.auth.*` APIs. Critical: the 3-step request-scoped contract (validate → setCurrentUser → can) — skipping any step silently breaks Layer-2 policies and owner-scoped reads return empty with no error. Also: code that works in `vite dev` but throws `platform.auth.X is not a function` or `Database error` in production."
 ---
 
 # Maravilla Cloud Auth
@@ -17,7 +17,7 @@ Every request that needs to act *as* an authenticated user must run these three 
 2. **`setCurrentUser(token)`** — bind that identity to *this* request. Without this, every subsequent KV/DB/realtime/media op runs as anonymous, even though you have a valid `AuthUser` in hand.
 3. **(optional) `can(action, resource, node?)`** — ask the policy engine, ahead of time, whether the bound caller is allowed to do something. The same evaluator gates direct ops, so `can()` is authoritative.
 
-**Skipping step 2 is the single most common Maravilla bug.** Owner-scoped policies like `auth.user_id == node.owner` will see `auth.user_id == ""` and silently filter everything out. The UI shows an empty list. There is no error.
+**Skipping step 2 is the single most common Maravilla bug.** Owner-scoped policies like `auth.user_id == node.document.owner` will see `auth.user_id == ""` and silently filter everything out. The UI shows an empty list. There is no error.
 
 ### Canonical SvelteKit `hooks.server.ts`
 
@@ -201,6 +201,62 @@ export default {
 ```
 
 Extracts the token from `Authorization: Bearer <token>` or `__session` cookie, validates it, binds the caller, and injects `request.user`.
+
+## Profiles — `getProfile` / `setProfile`
+
+```typescript
+const profile = await platform.auth.getProfile(userId);   // {} when the user has none
+await platform.auth.setProfile(userId, { ...profile, tier: 'pro' });
+```
+
+- **`setProfile` REPLACES the whole profile** (`INSERT … ON CONFLICT DO UPDATE SET data = ?`). Always read, spread, write. Never write after a **failed** read: the common `getProfile(id).catch(() => ({}))` followed by `setProfile(id, { ...profile, x })` erases every other field (display name, custom registration fields) the first time the read hiccups. Let the read throw in code that writes back.
+- The profile is what policies and `read_filter`s see as `auth.profile.*` / `$auth.profile.*`, read per request (not from the token), and a `setProfile` invalidates the cached snapshot — the next request sees the new value.
+- Only server code can write it, so a field you set there is as trustworthy as the user id.
+
+### Profile-mirrored membership (workspaces, teams, orgs)
+
+Maravilla has no org primitive, so multi-tenant apps keep `memberships` rows and **mirror** the caller's workspace ids onto the profile, because a policy / `read_filter` can read `auth.profile.workspace_ids` but cannot join `memberships`:
+
+```typescript
+read_filter: JSON.stringify({ workspace_id: { $in: '$auth.profile.workspace_ids' } })
+```
+
+The bootstrap has a chicken-and-egg problem that only shows in production. Do it in this order, on every request, before any other DB read:
+
+```typescript
+export async function ensureWorkspace(user: AuthUser) {
+  let profile = await platform.auth.getProfile(user.id);            // throw on failure — we write below
+
+  // 1. Seed the lists. Until they exist, `$in: '$auth.profile.workspace_ids'` is `$in: null`:
+  //    older runtimes turned that into invalid SQL ("Database error") on EVERY read,
+  //    including the reads step 3 needs; current ones match nothing.
+  if (!Array.isArray(profile.workspace_ids)) {
+    profile = { ...profile, workspace_ids: [] };
+    await platform.auth.setProfile(user.id, profile);
+  }
+
+  // 2. Insert-if-absent under DERIVED ids (`ws_personal_${user.id}`), so the policy can allow
+  //    exactly that insert. A findOne of a row that doesn't exist yet is evaluated with
+  //    `document: null` and THROWS a denial — treat a denial as "absent" here.
+  const ws = await platform.env.DB.findOne('workspaces', { _id: `ws_personal_${user.id}` })
+    .catch((e) => { if (/authz denied/.test(String(e?.message))) return null; throw e; });
+  if (!ws) await platform.env.DB.insertOne('workspaces', { _id: `ws_personal_${user.id}`, owner_user_id: user.id });
+  // …same for the membership row
+
+  // 3. Mirror: read memberships (needs a no-document read allowed — see maravilla-policies),
+  //    write the ids back only when they changed.
+}
+```
+
+The policies these reads go through must allow a read with no document — `find` and a missed `findOne` carry none. See [maravilla-policies](../maravilla-policies/SKILL.md) → `node.*` for DB ops.
+
+## Local dev vs production: two different `platform` objects
+
+In `vite dev` (and any Node process) `getPlatform()` returns the **SDK remote client**, which calls the dev server's HTTP API. In production it returns **`globalThis.platform`, built by the runtime isolate** (`crates/runtime/src/ops/platform/js_bindings/platform_js.rs`). They are separate implementations, and they have drifted:
+
+- A method can exist in the SDK types and the remote client but not in the isolate. `platform.auth.setProfile` was missing from the isolate until runtime `fd3bc9d` (Sep 2026): everything worked locally, production threw `TypeError: platform.auth.setProfile is not a function`. When a `platform.*` call fails only in production, grep `platform_js.rs` for the method before debugging your code.
+- A local dev server enforces only the auth resources applied to it — possibly none — so policy bugs don't reproduce locally. Test policies with `maravilla policy test` (see [maravilla-policies](../maravilla-policies/SKILL.md)).
+- Production error text is deliberately generic: `Database error` hides the storage error. Match on the prefix the runtime adds (`DB find authz denied`, `DB findOne error`) to tell a policy decision from a failed query.
 
 ## Admin operations
 

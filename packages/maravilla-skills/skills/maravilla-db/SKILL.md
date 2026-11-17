@@ -44,6 +44,8 @@ const recent = await db.find('posts',
 const me = await db.findOne('users', { email: 'alex@example.com' });
 ```
 
+`findOne` means "the row, or `null`": `null` when nothing matched **or** the resource's `read_filter` hides it — the two are indistinguishable on purpose. On runtimes that still evaluate the policy for a no-match (`document: null`), a policy without a scoped-read clause makes that `null` a thrown `DB findOne authz denied` instead; see [maravilla-policies](../maravilla-policies/SKILL.md) → `node.*` for DB ops.
+
 Filter operators supported: `$eq` (default), `$ne`, `$gt` / `$gte` / `$lt` / `$lte`, `$in` / `$nin`, `$exists`, `$and`, `$or`. Array fields also support `$all`, `$elemMatch`, `$size`. Not supported: `$regex`, `$where`, `$text`.
 
 **Array fields match by element (MongoDB semantics).** A filter on an array
@@ -232,7 +234,7 @@ const myPosts = await db.find('posts',
 );
 ```
 
-If your `posts` resource has policy `auth.user_id == node.ownerId || auth.is_admin`, you don't even need the explicit filter — the policy filters the result set for you.
+A policy does **not** filter a result set — `find` is evaluated once, with no document, and either runs or throws `DB find authz denied`. To scope rows declare a `read_filter` (`{"ownerId":"$auth.user_id"}`) on the resource; the runtime ANDs it into every `find` / `findOne`. See [maravilla-policies](../maravilla-policies/SKILL.md) → `node.*` for DB ops.
 
 ### Pagination
 
@@ -266,7 +268,9 @@ A background sweeper deletes documents whose indexed unix-seconds field is older
 ## Pitfalls
 
 - **Empty results despite valid data?** Almost always a missed `setCurrentUser(token)` in your hook — the policy denies because `auth.user_id` is empty. See [maravilla-auth](../maravilla-auth/SKILL.md).
-- **`find` returns a subset of expected docs.** Layer-2 silently filters denied rows. Use `platform.policy.setEnabled(false)` in a known-safe block to confirm whether the policy is the cause.
+- **`find` returns a subset of expected docs.** That is the resource's `read_filter` (ANDed into the query), not the policy — the policy never filters rows. Use `platform.policy.setEnabled(false)` in a known-safe block to confirm.
+- **`DB find authz denied` / `DB findOne authz denied` on a row that should be readable.** The policy runs on `find` with no `node.document`, and on a `findOne` that matched nothing with `document: null`. Clauses that only read `node.document.*` deny both. Fix in the policy (scoped-read clause + `read_filter`), not in the query. See [maravilla-policies](../maravilla-policies/SKILL.md).
+- **`DB findOne error: Database error`.** A storage failure, not a denial — e.g. on older runtimes a `read_filter` `$in` whose `$auth.profile.<list>` placeholder was missing (`$in: null`).
 - **Compound indexes from object literals.** Prefer `[['a', 1], ['b', -1]]` tuples — object key order is implementation-dependent.
 - **Vector index storage mismatch.** `storage: 'bit'` requires `metric: 'hamming'`. Mixing them errors out at index creation.
 

@@ -48,19 +48,25 @@ resources: [
     description: 'Shared todo items (anonymous-friendly)',
     actions: ['read', 'write', 'delete'],
   },
-  // Owner-scoped, with a public-share escape hatch via an unguessable id.
+  // KV namespace, owner-scoped via the stored value, with a public-share escape hatch.
   {
     name: 'invites',
     title: 'Birthday Invites',
+    type: 'kv',
     actions: ['read', 'write', 'delete'],
-    policy: 'auth.user_id == node.owner || auth.is_admin || node.public == true',
+    // Writes check the incoming value AND the stored one (no take-over); reads the stored one.
+    policy:
+      'node.action == "write" && node.value_new.owner == auth.user_id && (node.value == null || node.value.owner == auth.user_id)'
+      + ' || (node.action == "read" || node.action == "delete") && (node.value.owner == auth.user_id || node.value.public == true)',
   },
-  // Plain owner-or-admin.
+  // DB collection: the row is node.document; lists need readScoped + read_filter.
   {
     name: 'vcards',
     title: 'Digital Business Cards',
+    type: 'database',
     actions: ['read', 'write', 'delete'],
-    policy: 'auth.user_id == node.owner || auth.is_admin',
+    policy: 'auth.user_id != "" && node.action == "read" && node.document == null || auth.user_id == node.document.owner',
+    read_filter: '{"owner":"$auth.user_id"}',
   },
 ],
 ```
@@ -68,23 +74,27 @@ resources: [
 The policy expression is the **raisin-rel** language; full details live in [maravilla-policies](../maravilla-policies/SKILL.md). Key points:
 
 - `auth.*` is the bound caller — `auth.user_id`, `auth.email`, `auth.is_admin`, `auth.roles`, `auth.is_anonymous`.
-- `node.*` is the resource-shaped data for the specific op being checked.
+- `node.*` is the resource-shaped data for the specific op being checked. For DB it is `{ collection, filter, action, document }` — the row is `node.document`, absent on `find` and `null` on a `findOne` that matched nothing. `node.owner` never matches a DB row.
 - `node.action` is the action being performed (read / write / delete) — useful for action-specific clauses.
 - Leaving `policy` empty disables Layer-2 for that resource. Layer 1 still applies.
 
-### Scoping `find` / `list` reads with `read_filter`
+### Scoping reads with `read_filter`
 
-A `policy` is a **per-record** check — ideal for `findOne` / single-key reads and writes, where the runtime evaluates it against the record in hand. For `find` / `list` that return many rows, add a **`read_filter`** alongside the policy: a JSON query filter the runtime ANDs into the query before it runs, so callers only ever see their own rows.
+A **`read_filter`** is a JSON query filter the runtime ANDs into the query before it runs — on `find` **and** `findOne` — so callers only ever see their own rows. The `policy` is **still evaluated** on those reads, and on `find` it gets no document: a policy made only of `node.document.*` clauses denies every list (`DB find authz denied`). Start DB policies with a scoped-read clause and always pair it with a `read_filter`:
 
 ```typescript
 {
   name: 'reviews',
   title: 'Reviews',
+  type: 'database',
   actions: ['read', 'write', 'delete'],
-  policy: 'auth.user_id == node.owner || auth.is_admin',  // gates findOne + writes
-  read_filter: '{"owner":"$auth.user_id"}',               // scopes find / list reads
+  policy: 'auth.user_id != "" && node.action == "read" && node.document == null'   // find / missed findOne → read_filter decides
+    + ' || auth.user_id == node.document.owner',                                    // findOne + writes
+  read_filter: '{"owner":"$auth.user_id"}',
 }
 ```
+
+Local dev servers may have no resources applied, so none of this is enforced locally — run the policies through `maravilla policy test` before deploying.
 
 The runtime substitutes `$auth.*` placeholders from the bound caller at request time — `$auth.user_id`, `$auth.email`, `$auth.is_admin`, `$auth.groups`, `$auth.roles`, `$auth.profile.<field>`. Compose with `$or` for shared/public rows, e.g. `'{"$or":[{"owner":"$auth.user_id"},{"public":true}]}'`. It's applied with the rest of your auth config (`maravilla auth sync` / Auth Settings UI). See [maravilla-policies](../maravilla-policies/SKILL.md) for the full read-scoping model.
 
@@ -120,7 +130,7 @@ relations: [
 ],
 ```
 
-Reference in policies as `auth.user RELATES node.owner VIA 'STEWARDS'`.
+Reference in policies as `auth.user RELATES node.document.owner VIA 'STEWARDS'` (DB) or `node.value.owner` (KV).
 
 ## `auth.registration.fields` — custom signup form
 

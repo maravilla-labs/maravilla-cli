@@ -1,6 +1,6 @@
 ---
 name: maravilla-policies
-description: "Maravilla Layer-2 resource policies — the raisin-rel expression language with `auth.*` and `node.*`. Use when writing or debugging `policy` strings in `maravilla.config.ts`, when an authenticated user sees an empty list (likely policy denial), or when reasoning about groups, relations, and per-action rules."
+description: "Maravilla Layer-2 resource policies — the raisin-rel expression language with `auth.*` and `node.*`, plus `read_filter`. Use when writing, testing or debugging `policy` / `read_filter` in `maravilla.config.ts`; when a user sees an empty list, `DB find authz denied`, `DB findOne authz denied`, or `DB findOne error: Database error`; when a policy works locally but denies in production; or when reasoning about groups, relations, and per-action rules."
 ---
 
 # Maravilla Policies (Layer 2)
@@ -23,7 +23,8 @@ export default defineConfig({
         name: 'invites',
         title: 'Birthday Invites',
         actions: ['read', 'write', 'delete'],
-        policy: 'auth.user_id == node.owner || auth.is_admin || node.public == true',
+        // DB: the row is under node.document — see "node.* for DB ops" below.
+        policy: 'auth.user_id == node.document.owner || node.document.public == true',
       },
     ],
   },
@@ -56,8 +57,7 @@ This is whatever `platform.auth.getCurrentUser()` would return for this request:
 
 Shape depends on the op:
 
-- **DB write** — the document being inserted/updated. `node.action`: `"write"` / `"delete"`.
-- **DB read** — each candidate document from the result set (rows filtered post-policy if denied). `node.action`: `"read"`.
+- **DB** — the row is **never** at `node.<field>`; it is `node.document`, and some ops carry **no document at all**. See [`node.*` for DB ops](#node-for-db-ops--the-row-is-nodedocument-and-sometimes-null) — read it before writing a DB policy.
 - **KV** — `{ namespace, key, action, value }` for per-key ops; `{ namespace, prefix, action }` for `list`. Actions: `"read"` (get), `"write"` (put — also carries `value_new`), `"delete"`, `"list"`.
 - **Storage** — `{ bucket, key, action }` for per-key ops; `{ bucket, prefix, action }` for `list`. Actions: `"get"`, `"put"`, `"delete"`, `"list"`, `"upload-url"`, `"download-url"`, `"get-metadata"`, `"confirm"`. **NOT** `"read"`/`"write"` — those are KV's. Mixing them is a silent denial: `node.action == "read"` on a storage op never matches because the actual action is `"get"`.
 
@@ -71,6 +71,49 @@ Shape depends on the op:
 | Realtime (`type: 'realtime'`) | `subscribe`, `publish` | — | — |
 
 Source of truth: `crates/runtime/src/ops/platform/{ops_kv,ops_db,ops_storage,ops_realtime}.rs`.
+
+#### `node.*` for DB ops — the row is `node.document`, and sometimes null
+
+What the runtime sends (`crates/runtime/src/ops/platform/ops_db.rs`):
+
+| Op | `node` | `node.document` |
+|---|---|---|
+| `find` | `{ collection, filter, effective_filter, action: "read" }` | **absent** |
+| `findOne` | `{ collection, filter, effective_filter, action: "read", document }` | the row, or **`null` when nothing matched** |
+| `insertOne` / `insertMany` (per doc) | `{ collection, document, action: "write" }` | the new row — **no `update` key** |
+| `updateOne` | `{ collection, filter, update, action: "write", document }` | the **existing** row (pre-fetched), not the result |
+| `deleteOne` | `{ collection, filter, action: "delete", document }` | the existing row, or `null` |
+| `updateMany` / `deleteMany` | `{ collection, filter, effective_filter, [update], action }` | **absent** |
+
+Consequences — each one was a production outage:
+
+1. **`node.owner` never matches a DB row.** Write `node.document.owner`. (`node.owner` is `null`; `auth.user_id == null` is false for every signed-in caller.)
+2. **The policy runs on `find`, with no document.** A policy made only of `node.document.*` clauses denies **every list**: `DB find authz denied: … policy denied on resource '<name>'`. The rows are not filtered one by one — the whole call fails.
+3. **A `findOne` that matches nothing is still evaluated, with `document: null`** — so a "does it exist?" probe throws `DB findOne authz denied` instead of returning `null`. Bootstrap code (`if (!await findOne(...)) insertOne(...)`) never reaches the insert, and a stale id in a URL becomes a 500 instead of a 404.
+
+   **Intended behaviour: `findOne` returns `null` whenever nothing matched** — the row doesn't exist, or `read_filter` hides it. That leaks nothing (hidden and missing look the same) and there is no row to protect, so the runtime should return `null` without evaluating the policy (`op_db_find_one` in `ops_db.rs`). Until your runtime does, start the policy with `readScoped` (below) so a no-row read is allowed and comes back as `null`. Don't work around it by catching every error around `findOne` — catch only `authz denied`, or real storage failures turn into silent "not found".
+4. **`node.update == null` tells an insert from an update.** On update the policy sees the *existing* row, so a rule like "you may write rows of your workspace" lets an update `$set` the row's `workspace_id` to someone else's. Forbid updates of the key field (`node.update == null && …`) or re-check it in code.
+
+The fix for 2 and 3 is a scoped-read clause at the front of the policy — a read with no row in hand is allowed, and `read_filter` (ANDed into the query, see below) decides what it can return:
+
+```typescript
+// maravilla.config.ts
+const readScoped = Policy.raw('auth.user_id != "" && node.action == "read" && node.document == null');
+
+{
+  name: 'posts',
+  type: 'database',
+  actions: ['read', 'write', 'delete'],
+  policy: readScoped.or(Policy.raw('auth.user_id == node.document.owner')),
+  read_filter: JSON.stringify({ owner: '$auth.user_id' }),   // REQUIRED with readScoped
+}
+```
+
+Never add `readScoped` without a `read_filter` — the resource becomes readable by every signed-in user. `updateMany` / `deleteMany` also carry no document; gate those in code or on `node.filter`.
+
+#### `can()` takes the node as you pass it
+
+`platform.auth.can(action, resource, node)` evaluates `node` verbatim (it only injects `action`). For a DB policy, pass the row the way the op would: `can('read', 'posts', { document: post })`. `can('read', 'posts', post)` evaluates `node.document.owner` as `null` and denies — while the real `findOne` allows.
 
 #### `node.value` (existing) vs `node.value_new` (incoming)
 
@@ -137,9 +180,9 @@ So if your `storage.server.ts` (or equivalent) prepends the resource name like `
 
 KV `node.key` does NOT include the namespace — KV ops pass the user's key verbatim. Only storage has this gotcha because of the bucket-derived resource_name pattern.
 
-## Scoping bulk reads with `read_filter`
+## Scoping reads with `read_filter`
 
-The expressions above are **per-record predicates** — the runtime evaluates them against a single record (`findOne`, a single-key `get`, each write). For `find` / `list` that return many rows, declare a **`read_filter`** on the resource (in `maravilla.config.ts`): a JSON query filter the runtime ANDs into the query *before it runs*, so callers only ever read their own rows.
+A **`read_filter`** is a JSON query filter the runtime ANDs into the caller's filter *before the query runs* — on **`find` AND `findOne`** (also `updateMany` / `deleteMany`). The policy still runs afterwards (see the DB table above), so a DB resource that lists rows needs both: `read_filter` to scope, a `readScoped` clause so the policy doesn't deny the list.
 
 ```typescript
 // maravilla.config.ts
@@ -147,31 +190,34 @@ The expressions above are **per-record predicates** — the runtime evaluates th
   name: 'reviews',
   type: 'database',
   actions: ['read', 'write', 'delete'],
-  policy: 'auth.user_id == node.owner || auth.is_admin',   // per-record: findOne + writes
-  read_filter: '{"owner":"$auth.user_id"}',                // bulk reads: find / list
+  policy: readScoped.or(Policy.raw('auth.user_id == node.document.owner')),
+  read_filter: '{"owner":"$auth.user_id"}',
 }
 ```
 
-- It's a normal query object over the resource's own fields — ANDed into whatever filter the caller passed. `$auth.*` placeholders are substituted from the bound caller at request time: `$auth.user_id`, `$auth.email`, `$auth.is_admin`, `$auth.groups`, `$auth.roles`, `$auth.profile.<field>`.
+- It's a normal query object over the resource's own fields. `$auth.*` placeholders are substituted from the bound caller at request time: `$auth.user_id`, `$auth.email`, `$auth.is_admin`, `$auth.groups`, `$auth.roles`, `$auth.profile.<field>`. An unknown or missing path becomes `null`.
 - Compose with `$or` for "mine plus shared": `'{"$or":[{"owner":"$auth.user_id"},{"public":true}]}'`.
-- `policy` and `read_filter` are complementary: `policy` makes single-record access decisions; `read_filter` scopes the rows a list returns. Apps that mix per-user and shared data usually want both.
+- **Because it also applies to `findOne`, it hides rows a capability should reach.** An owners-only `read_filter` on `invites` means the person holding an invite link can never `findOne` it by its token, whatever the policy says. For such a resource drop the `read_filter` and gate in the policy instead: allow a no-document read only for a filter the policy can check (`auth.profile.owned_ids.contains(node.filter.workspace_id)`), and a document read by the capability (`node.filter.token_hash != null && node.filter.token_hash == node.document.token_hash`).
+- **`{ "$in": "$auth.profile.<list>" }` when the list is missing.** The placeholder becomes `null`. Runtimes before `2f6bbda` (Sep 2026) rendered `$in: null` as empty SQL and every read failed with `DB findOne error: Database error` (a storage error, not a denial). Current runtimes match nothing. Either way, write the list onto the profile before the user's first read — see [maravilla-auth](../maravilla-auth/SKILL.md) → profile-mirrored membership.
 
 Declared in config, applied with the rest of your auth settings ([maravilla-config](../maravilla-config/SKILL.md) → applying config, or the Auth Settings → Resources UI).
 
 ## Common patterns
 
+The DB patterns read the row from `node.document` and assume a `readScoped` clause + `read_filter` for lists (above). For KV, the stored value is `node.value` / `node.value_new`.
+
 ### Owner-only
 
 ```javascript
-'auth.user_id == node.owner || auth.is_admin'
+'auth.user_id == node.document.owner'
 ```
 
-The classic. Every doc has an `owner` field set to a user id; the owner and admins can do anything.
+The classic. Every doc has an `owner` field set to a user id.
 
 ### Owner with a public escape hatch
 
 ```javascript
-'auth.user_id == node.owner || auth.is_admin || node.public == true'
+'auth.user_id == node.document.owner || node.document.public == true'
 ```
 
 Used by capability-link sharing — the owner stores some records under unguessable ids (e.g. `inv:{nanoid}`) with `public: true`, so anyone with the link can read but the owner's full list stays private.
@@ -179,7 +225,7 @@ Used by capability-link sharing — the owner stores some records under unguessa
 ### Per-action branches
 
 ```javascript
-'(node.action == "read" && node.status == "published" && node.visibility == "public") '
+'(node.action == "read" && node.document.status == "published" && node.document.visibility == "public") '
 + '|| auth.roles.contains("teacher") '
 + '|| auth.is_admin'
 ```
@@ -191,7 +237,7 @@ Reads are public when published-and-public; teachers and admins do anything.
 ```javascript
 'node.action == "read" '
 + '|| (node.action == "write" && auth.user_id != "") '
-+ '|| (node.action == "delete" && (auth.user_id == node.author_id || auth.is_admin))'
++ '|| (node.action == "delete" && auth.user_id == node.document.author_id)'
 ```
 
 Comment-board pattern: anyone reads, any signed-in user can write, only the author or an admin can delete.
@@ -209,8 +255,8 @@ Resolves at evaluation time against the user-group-membership table.
 Given `relations: [{ relation_name: 'STEWARDS', implies_stewardship: true }]` in your config:
 
 ```javascript
-'auth.user_id == node.owner '
-+ '|| auth.user RELATES node.owner VIA "STEWARDS" '
+'auth.user_id == node.document.owner '
++ '|| auth.user RELATES node.document.owner VIA "STEWARDS" '
 + '|| auth.is_admin'
 ```
 
@@ -247,7 +293,7 @@ Three things to internalise from this example:
 ### Self-only with a guarded write source
 
 ```javascript
-'auth.user_id == node.user_id && node.source == "self" '
+'auth.user_id == node.document.user_id && node.document.source == "self" '
 + '|| auth.is_admin'
 ```
 
@@ -260,6 +306,48 @@ Used in self-enroll endpoints where the doc must be tagged `source: "self"` — 
 ```
 
 Only admins can read or write the `admin_audit` collection.
+
+## Null traps
+
+Missing values are `null`, and `null` compares equal to `null`:
+
+- **`auth.profile.pass_id == node.document._id`** — a caller whose profile has no `pass_id`, writing a row with no `_id`, satisfies it. Guard both sides: `auth.profile.pass_id != null && node.document != null && auth.profile.pass_id == node.document._id`.
+- **`auth.profile.workspace_ids.contains(x)`** on a profile without the list is simply false — fine in a policy, but the same list in a `read_filter` `$in` is the "Database error" trap above.
+- **`auth.user_id != ""`** is the signed-in check; anonymous is `""`, not `null`.
+
+## Test policies offline — before you deploy
+
+A local dev server only enforces the resources that were applied to it — and it can easily have **none** (check `sqlite3 maravilla.db "select count(*) from resources"`; a project that only ever deployed via the pipeline had 0). Then every policy "works" locally and the first production request is the first real evaluation. `maravilla policy test` runs the **same evaluator as the runtime**, offline, against fixture cases — feed it the node shapes from the DB table above, especially the no-document ones:
+
+```json
+{
+  "cases": [
+    { "name": "list as a signed-in user", "policy": "<policy from build/manifest.json>",
+      "auth": { "user_id": "u1", "profile": { "workspace_ids": ["w1"] } },
+      "node": { "collection": "posts", "action": "read", "filter": {} },
+      "expected": "allow" },
+    { "name": "findOne that matched nothing", "policy": "…",
+      "auth": { "user_id": "u1" },
+      "node": { "collection": "posts", "action": "read", "filter": { "_id": "x" }, "document": null },
+      "expected": "allow" },
+    { "name": "read another tenant's row", "policy": "…",
+      "auth": { "user_id": "u1", "profile": { "workspace_ids": ["w1"] } },
+      "node": { "collection": "posts", "action": "read", "document": { "workspace_id": "w2" } },
+      "expected": "deny" },
+    { "name": "insert without an identity", "policy": "…",
+      "auth": { "user_id": "u2", "profile": {} },
+      "node": { "collection": "posts", "action": "write", "document": { "workspace_id": "w1" } },
+      "expected": "deny" }
+  ]
+}
+```
+
+```bash
+npm run build                      # policies are serialized into build/manifest.json → auth.resources[].policy
+maravilla policy test -f policy.fixtures.json
+```
+
+Generate the cases from `build/manifest.json` in a small script (one set per resource: list, missing row, own row, foreign row, insert, update, anonymous) so every policy is covered and the script can run after each config change. Include a "no identity" write case for every rule that compares a profile field — that is how the `null == null` hole is found.
 
 ## Operators and built-ins
 
@@ -300,6 +388,16 @@ if (!ok) return new Response('Forbidden', { status: 403 });
 ```
 
 The `can()` evaluator is the same engine that gates direct ops, so its answer is authoritative.
+
+## Reading the error
+
+| Message | Meaning |
+|---|---|
+| `DB find authz denied: … policy denied on resource 'X'` | The policy ran on `find` (no document) and was false — add `readScoped` + `read_filter`. |
+| `DB findOne authz denied: …` | Either a real denial, or the row doesn't exist / is outside `read_filter` (`document: null`). |
+| `DB findOne error: Database error` / `DB find error: Database error` | Not a policy decision — the storage query failed. On older runtimes: a `read_filter` placeholder resolved to `null` inside `$in`. |
+| `DB insertOne authz denied` | The policy saw the new row as `node.document` and was false (no `node.update`). |
+| `TypeError: platform.auth.X is not a function` (production only) | The runtime isolate lacks a method the dev SDK has — see [maravilla-auth](../maravilla-auth/SKILL.md) → dev vs production surface. |
 
 ## Debugging "logged in but empty list"
 

@@ -235,7 +235,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 ```
 
-The Layer-2 policy on `items` (e.g. `auth.user_id == node.owner_id || auth.is_admin`) prevents one user from deleting another's items even if they forge the form.
+The Layer-2 policy on `items` (e.g. `auth.user_id == node.document.owner_id` — DB rows are under `node.document`) prevents one user from deleting another's items even if they forge the form.
 
 ## Role gates
 
@@ -299,7 +299,7 @@ Most code prefers the direct `import { getPlatform } from '@maravilla-labs/platf
 
 - [maravilla-auth](../maravilla-auth/SKILL.md) — the 3-step contract reference
 - [maravilla-events](../maravilla-events/SKILL.md) — `onAuth({op:'registered'})` provisioning
-- [maravilla-policies](../maravilla-policies/SKILL.md) — the `auth.user_id == node.owner_id` gate
+- [maravilla-policies](../maravilla-policies/SKILL.md) — the `auth.user_id == node.document.owner_id` gate
 - [maravilla-frameworks-sveltekit](../maravilla-frameworks-sveltekit/SKILL.md) — the equivalent SvelteKit pattern
 
 Full reference: <https://www.maravilla.cloud/llms-full.txt>.

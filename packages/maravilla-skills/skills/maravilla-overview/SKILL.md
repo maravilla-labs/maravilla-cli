@@ -59,7 +59,7 @@ If you wire anything user-facing, **read [maravilla-auth](../maravilla-auth/SKIL
 2. `platform.auth.setCurrentUser(token)` — bind identity for *this* request
 3. Operate normally; Layer-2 policies will see `auth.user_id` on every op
 
-Skipping step 2 silently makes the request anonymous. Owner-scoped policies (`auth.user_id == node.owner`) then return zero rows and the UI looks "broken" with no error.
+Skipping step 2 silently makes the request anonymous. Owner-scoped policies (`auth.user_id == node.document.owner`) then deny and the UI looks "broken" with no error.
 
 ## Pitfalls that bite — read before writing auth/policy code
 
@@ -101,7 +101,7 @@ The framework adapter (`@maravilla-labs/adapter-sveltekit`, `@maravilla-labs/ada
 ## Two layers of authorization
 
 - **Layer 1 — tenant + owner isolation.** Always on. A request can never see another tenant's data, full stop. Not configurable.
-- **Layer 2 — per-resource policies.** Declarative expressions in `maravilla.config.ts` like `auth.user_id == node.owner || auth.is_admin`. Evaluated on every KV/DB/realtime/media op against that resource. Can be temporarily disabled per-request via `platform.policy.setEnabled(false)` for trusted in-app flows (admin jobs, seeders) — every flip is audit-logged.
+- **Layer 2 — per-resource policies.** Declarative expressions in `maravilla.config.ts` like `auth.user_id == node.document.owner` (DB) or `node.value.owner` (KV). Evaluated on every KV/DB/realtime/media op — for DB including `find` (no document) and a `findOne` that matched nothing, so lists need a scoped-read clause plus a `read_filter` against that resource. Can be temporarily disabled per-request via `platform.policy.setEnabled(false)` for trusted in-app flows (admin jobs, seeders) — every flip is audit-logged.
 
 ## Frameworks supported
 

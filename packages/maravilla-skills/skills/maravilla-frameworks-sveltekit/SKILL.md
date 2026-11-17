@@ -195,7 +195,7 @@ export const actions: Actions = {
 };
 ```
 
-The Layer-2 policy on `todos` (e.g. `auth.user_id == node.owner`) ensures users can't toggle/delete each other's items even if they craft a different `key`.
+The Layer-2 policy on `todos` (e.g. `node.value.owner == auth.user_id`, plus `node.value_new.owner` on writes — see maravilla-policies → `node.value` vs `node.value_new`) ensures users can't toggle/delete each other's items even if they craft a different `key`.
 
 ## Hosted auth pages
 
