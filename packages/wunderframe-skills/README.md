@@ -17,3 +17,13 @@ npx skills add maravilla-labs/maravilla-cli/packages/wunderframe-skills
 ## What the skill relies on in Wunderframe
 
 The deck protocol v1 (`postMessage`, `wf: 'deck'`) and the step helper (`data-wf-step`, `data-wf-play`, web-video `embeds`). The template's `src/wf-runtime.js` is a verbatim copy of the helper in Wunderframe's `src/lib/deck-runtime.ts` — when that changes, copy it again.
+
+## Claude desktop / claude.ai and ChatGPT
+
+These apps take a skill as a ZIP of its folder (Claude: *Customize › Skills › + › Create skill › Upload a skill*, with *Code execution* on; ChatGPT workspaces with Skills: *Skills › Create › Upload from your computer*). Wunderframe serves the ready ZIP at `https://www.wunderframe.com/skills/wunderframe-decks.zip`, linked from the docs page *Present your own deck*. After changing the skill, rebuild that file in the Wunderframe repo:
+
+```bash
+cd packages/wunderframe-skills/skills
+zip -r -X <wunderframe>/static/skills/wunderframe-decks.zip wunderframe-decks \
+  -x "wunderframe-decks/evals/*" "*.DS_Store" "*/node_modules/*" "*/dist/*" "*/originals/*"
+```
