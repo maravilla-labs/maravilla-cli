@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>My talk</title>
+		<link rel="stylesheet" href="./src/fonts/fonts.css" />
+		<link rel="stylesheet" href="./src/deck.css" />
+	</head>
+	<body>
+		<!--
+			One <section> per slide, inside .stage (a 1920×1080 canvas).
+			  data-title="…"                  the slide's name on the remote (else its first heading)
+			  <aside class="notes">…</aside>  speaker notes for the remote / prompter (plain text; <p> per paragraph)
+			  data-wf-step                    appears on the next press; data-wf-step="2" = explicit order
+			  <video data-wf-play muted playsinline poster="…">  plays on the next press
+			  class="enter" style="--d:.2"    arrives with the slide (keep --d ≤ 0.5)
+			Pictures: put them in src/assets/ and reference them relatively — they are inlined.
+			Videos: put them in public/media/ and reference them as "/media/<file>.mp4".
+			Layouts and building blocks: see the comments in src/deck.css. Delete the slides you don't need.
+		-->
+
+		<!-- Icons: an inline sprite, so they work offline and look the same on every screen (no emoji).
+		     Use: <svg class="icon"><use href="#i-star"/></svg> — colour follows the text colour. -->
+		<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+			<defs>
+				<symbol id="i-star" viewBox="0 0 100 100"><path d="M50 6l12 31 33 2-26 21 9 33-28-18-28 18 9-33L5 39l33-2z" /></symbol>
+				<symbol id="i-heart" viewBox="0 0 100 100"><path d="M50 88C20 66 8 48 8 32 8 18 19 10 31 10c9 0 16 5 19 12 3-7 10-12 19-12 12 0 23 8 23 22 0 16-12 34-42 56z" /></symbol>
+				<symbol id="i-bulb" viewBox="0 0 100 100"><path d="M50 6a30 30 0 0 0-18 54c4 3 6 8 6 12v4h24v-4c0-4 2-9 6-12A30 30 0 0 0 50 6z" /><rect x="38" y="82" width="24" height="7" rx="3" /><rect x="42" y="92" width="16" height="6" rx="3" /></symbol>
+				<symbol id="i-mic" viewBox="0 0 100 100"><rect x="36" y="8" width="28" height="52" rx="14" /><path d="M24 44c0 28 52 28 52 0" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" /><path d="M50 70v18M34 90h32" stroke="currentColor" stroke-width="7" stroke-linecap="round" /></symbol>
+				<symbol id="i-person" viewBox="0 0 100 100"><circle cx="50" cy="26" r="16" /><path d="M18 92c0-30 14-44 32-44s32 14 32 44z" /></symbol>
+				<symbol id="i-check" viewBox="0 0 100 100"><path d="M14 52l24 24 48-52" fill="none" stroke="currentColor" stroke-width="13" stroke-linecap="round" stroke-linejoin="round" /></symbol>
+				<symbol id="i-globe" viewBox="0 0 100 100"><g fill="none" stroke="currentColor" stroke-width="6"><circle cx="50" cy="50" r="40" /><ellipse cx="50" cy="50" rx="17" ry="40" /><path d="M10 50h80M17 28h66M17 72h66" /></g></symbol>
+				<symbol id="i-book" viewBox="0 0 100 100"><path d="M8 18c14-4 28-2 40 6v62c-12-8-26-10-40-6zM92 18c-14-4-28-2-40 6v62c12-8 26-10 40-6z" /></symbol>
+			</defs>
+		</svg>
+
+		<main class="stage">
+			<section class="split title" data-title="Title">
+				<div class="text">
+					<p class="chip enter">Conference name · 2026</p>
+					<h1 class="enter" style="--d: 0.1">The title <span class="hl">of your talk</span></h1>
+					<p class="lead enter" style="--d: 0.2">One line that says what the audience gets out of it</p>
+					<p class="byline enter" style="--d: 0.3">Your Name — Your Role</p>
+				</div>
+				<figure class="paper enter" style="--tilt: 3deg; --d: 0.2"><img src="./src/assets/hero.svg" alt="" /></figure>
+				<aside class="notes">
+					<p>Greet the room. Look at people before you speak.</p>
+					<p>Who you are, in one sentence.</p>
+					<p>What they will take home. → first: the words we need</p>
+				</aside>
+			</section>
+
+			<section class="top" data-title="Words to know">
+				<header class="head">
+					<p class="kicker">Key terms</p>
+					<h2>Words you need <span class="hl">to know</span></h2>
+				</header>
+				<dl class="terms icons">
+					<div data-wf-step><span class="badge info"><svg class="icon"><use href="#i-book" /></svg></span><dt>Term</dt><dd><em>The full name of an acronym</em>What it means, in everyday words</dd></div>
+					<div data-wf-step><span class="badge good"><svg class="icon"><use href="#i-bulb" /></svg></span><dt>Second term</dt><dd>One short line — the rest is said, not shown</dd></div>
+					<div data-wf-step><span class="badge bad"><svg class="icon"><use href="#i-mic" /></svg></span><dt>Third term</dt><dd>Foreign or technical words belong on screen</dd></div>
+				</dl>
+				<aside class="notes">
+					<p>3 presses: one word each.</p>
+					<p>Explain each word in a sentence; the screen keeps it visible while you talk.</p>
+				</aside>
+			</section>
+
+			<section class="divider" data-title="Part 1">
+				<span class="num">01</span>
+				<h2>The story</h2>
+				<aside class="notes">Pause here. Let the room settle.</aside>
+			</section>
+
+			<section class="top" data-title="Timeline">
+				<header class="head">
+					<p class="kicker">How it happened</p>
+					<h2>Four dates, <span class="hl">one story</span></h2>
+				</header>
+				<div class="fill" style="display: flex; align-items: center">
+					<ol class="timeline" style="width: 100%">
+						<li><b>1989</b><span>Where it starts</span></li>
+						<li data-wf-step><b>1999</b><span>The turning point</span></li>
+						<li data-wf-step><b>2000</b><span>The big moment</span></li>
+						<li class="now" data-wf-step><b>Today</b><span>What stayed</span></li>
+					</ol>
+				</div>
+				<aside class="notes">
+					<p>3 presses: one date each.</p>
+					<p>Tell each date as a scene, not as a list.</p>
+				</aside>
+			</section>
+
+			<section class="top" data-title="Cause and effect">
+				<header class="head">
+					<p class="kicker">What changed</p>
+					<h2>One voice, <span class="hl">three steps</span></h2>
+				</header>
+				<div class="flow fill">
+					<div class="card"><span class="badge"><svg class="icon"><use href="#i-mic" /></svg></span><h3>Someone speaks up</h3></div>
+					<div class="card" data-wf-step><span class="badge info"><svg class="icon"><use href="#i-globe" /></svg></span><h3>The word spreads</h3></div>
+					<div class="card" data-wf-step><span class="badge good"><svg class="icon"><use href="#i-check" /></svg></span><h3>Things change</h3></div>
+				</div>
+				<p class="callout" data-wf-step>The sentence the slide is for</p>
+				<aside class="notes">
+					<p>3 presses: two boxes, then the line at the bottom.</p>
+					<p>Say the bottom line slowly — it is the point of the slide.</p>
+				</aside>
+			</section>
+
+			<section class="split" data-title="Context">
+				<div class="text">
+					<p class="kicker">Context</p>
+					<h2>Short headline, <span class="hl">one idea</span></h2>
+					<p>Keep slides sparse — <strong>you</strong> are the presentation, the slide is the backdrop.</p>
+				</div>
+				<figure><img src="./src/assets/hero.svg" alt="" /></figure>
+				<aside class="notes">Tell the story behind the picture instead of reading the text.</aside>
+			</section>
+
+			<section class="statement" data-title="The number">
+				<div class="big">73%</div>
+				<h2 data-wf-step>of teams never measure it.</h2>
+				<aside class="notes">Show the number first, let it land, then press for the punchline.</aside>
+			</section>
+
+			<section class="top" data-title="The problem">
+				<header class="head">
+					<p class="kicker">The problem</p>
+					<h2>What went <span class="hl">wrong</span></h2>
+				</header>
+				<ol class="numbered">
+					<li data-wf-step>First thing that happened</li>
+					<li data-wf-step>Then people <b>reacted</b></li>
+					<li data-wf-step>And the result was unfair</li>
+				</ol>
+				<p class="callout" data-wf-step>Would that be fair?</p>
+				<aside class="notes">
+					<p>4 presses. After the question: pause, look at the room, wait for an answer.</p>
+				</aside>
+			</section>
+
+			<section data-title="Options">
+				<h2>Three ways forward</h2>
+				<div class="cards" style="--cols: 3">
+					<div class="card" data-wf-step="1"><h3>Measure</h3><p>Start with one honest metric.</p></div>
+					<div class="card" data-wf-step="2"><h3>Automate</h3><p>Remove the step people skip.</p></div>
+					<div class="card" data-wf-step="2"><h3>Share</h3><p>Put it where everyone sees it.</p></div>
+				</div>
+				<aside class="notes">Cards 2 and 3 share step number 2, so they appear together.</aside>
+			</section>
+
+			<!-- A video that starts on Next (put the file in public/media/ first):
+			<section class="bleed" data-title="Demo video">
+				<video src="/media/demo.mp4" poster="./src/assets/demo-poster.jpg" data-wf-play muted playsinline></video>
+				<div class="caption"><h3>The demo, recorded</h3></div>
+				<aside class="notes">Press Next to start the video. Sound follows the room's speakers and the remote's sound button.</aside>
+			</section>
+			-->
+
+			<section class="quote split" data-title="The quote">
+				<figure class="paper" style="--tilt: -3deg"><img src="./src/assets/hero.svg" alt="" /></figure>
+				<div class="text">
+					<p class="kicker">The quote</p>
+					<blockquote>A sentence worth remembering, in the speaker's language.</blockquote>
+					<cite>— Who said it</cite>
+					<div class="card" data-wf-step>
+						<p class="kicker good">What it means</p>
+						<p>The quote in plain words — one or two lines.</p>
+					</div>
+				</div>
+				<aside class="notes">
+					<p>Read the quote slowly, then pause.</p>
+					<p>1 press: what it means — say it in your own words first.</p>
+				</aside>
+			</section>
+
+			<section class="split" data-title="Why it matters to me">
+				<figure class="portrait"><img src="./src/assets/hero.svg" alt="" style="object-position: 50% 30%" /></figure>
+				<div class="text">
+					<p class="kicker">What impresses me</p>
+					<ul class="points icons">
+						<li data-wf-step><svg class="icon hl"><use href="#i-star" /></svg> A reason, in a few words</li>
+						<li data-wf-step><svg class="icon bad"><use href="#i-heart" /></svg> A second reason</li>
+						<li data-wf-step><svg class="icon good"><use href="#i-check" /></svg> A third reason</li>
+					</ul>
+				</div>
+				<aside class="notes">
+					<p>Your own feelings — speak freely here.</p>
+					<p>3 presses. Last sentence: look at the audience.</p>
+				</aside>
+			</section>
+
+			<section class="closing" data-title="Thank you — questions">
+				<h1 class="enter">Thank you!</h1>
+				<p class="ask enter" style="--d: 0.3">Questions?</p>
+				<p class="source foot" style="justify-content: center">Sources: the book, page 48 · example.com</p>
+				<aside class="notes">
+					<p>"Thank you for listening. Does anyone have a question?"</p>
+					<p>Likely: "Question one?" → Short answer.</p>
+					<p>Likely: "Question two?" → Short answer.</p>
+				</aside>
+			</section>
+
+			<div class="progress"></div>
+		</main>
+		<script type="module" src="./src/deck.js"></script>
+	</body>
+</html>

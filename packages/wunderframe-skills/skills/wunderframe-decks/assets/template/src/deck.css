@@ -1,0 +1,308 @@
+/* ============================================================
+   Theme — change these tokens first; everything else follows.
+   Map the speaker's brand onto them (references/design.md).
+   ============================================================ */
+:root {
+	/* colour */
+	--bg: #0f0d24;             /* the canvas */
+	--bg-2: #1c1840;           /* cards, panels */
+	--ink: #ffffff;            /* headlines, strong text */
+	--muted: #cfcbea;          /* body text: still ≥ 7:1 on --bg */
+	--dim: #8e89b8;            /* sources, captions — never for content */
+	--accent: #ffc247;         /* THE brand colour: kickers, highlights, the one key word */
+	--accent-soft: rgba(255, 194, 71, 0.25); /* the accent as a halo (no color-mix: Safari 14) */
+	--on-accent: #1c1840;      /* text on an --accent fill */
+	--good: #7ee081;           /* a meaning, used the same way all through the talk … */
+	--bad: #ff7b7b;            /* … e.g. problem / risk */
+	--info: #7cc4ff;           /* … e.g. fact / context */
+	--line: rgba(255, 255, 255, 0.14);
+	--card: rgba(255, 255, 255, 0.07);
+	/* The backdrop of every slide. Static gradients only: a blurred, animated glow costs an old
+	   TV box its frame rate and judders on an LED wall. */
+	--stage-bg:
+		radial-gradient(60% 70% at 0% 0%, rgba(255, 154, 85, 0.22), transparent 70%),
+		radial-gradient(60% 70% at 100% 100%, rgba(91, 108, 255, 0.28), transparent 70%),
+		linear-gradient(135deg, #171338, #2b1a52 60%, #3d2060);
+
+	/* type — canvas pixels on 1920×1080; read from the back of a hall */
+	--font: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+	--mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+	--fs-display: 220px;       /* one huge number or word */
+	--fs-h1: 150px;            /* title slide */
+	--fs-h2: 88px;             /* slide headline */
+	--fs-h3: 52px;             /* card / step heading */
+	--fs-body: 44px;           /* bullets, body */
+	--fs-small: 32px;          /* secondary lines, explanations */
+	--fs-tiny: 26px;           /* sources, footers — the floor */
+
+	/* shape */
+	--pad: 120px;
+	--gap: 40px;
+	--radius: 28px;
+	--shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+	--ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* A light theme for washed-out projectors in bright rooms: <html data-theme="light"> */
+:root[data-theme='light'] {
+	--bg: #f7f5ef;
+	--bg-2: #ffffff;
+	--ink: #14122b;
+	--muted: #3d3a58;
+	--dim: #6f6c88;
+	--accent: #d9480f;
+	--accent-soft: rgba(217, 72, 15, 0.2);
+	--on-accent: #ffffff;
+	--good: #2b8a3e;
+	--bad: #c92a2a;
+	--info: #1971c2;
+	--line: rgba(20, 18, 43, 0.14);
+	--card: rgba(20, 18, 43, 0.05);
+	--stage-bg: linear-gradient(135deg, #fbfaf6, #efece2);
+	--shadow: 0 18px 50px rgba(20, 18, 43, 0.16);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
+body {
+	color: var(--ink);
+	font-family: var(--font);
+	-webkit-font-smoothing: antialiased;
+	cursor: default;
+	user-select: none;
+	-webkit-user-select: none;
+}
+
+/* ============================================================
+   The 1920×1080 canvas (16:9 — the laser pointer assumes it).
+   deck.js scales it to the window; design in canvas pixels.
+   ============================================================ */
+.stage {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: 1920px;
+	height: 1080px;
+	transform-origin: 50% 50%;
+	overflow: hidden;
+	background: var(--stage-bg);
+}
+/* :where() keeps this at zero specificity, so a layout class on the section (.split, .bleed …) wins. */
+:where(.stage > section) {
+	position: absolute;
+	top: 0; right: 0; bottom: 0; left: 0;
+	padding: var(--pad);
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: var(--gap);
+}
+.stage > section[hidden] { display: none; }
+/* Enter animation: motion only. Never animate a whole slide's opacity — a frame that starts
+   rendering throttled (a screen waking up, a thumbnail) can sit on the first keyframe, and the
+   step helper treats opacity 0 as "not on show". */
+.stage > section.current { animation: slide-in 0.45s var(--ease); }
+@keyframes slide-in { from { transform: translateY(14px) scale(0.995); } to { transform: none; } }
+
+aside.notes { display: none; }
+
+/* ============================================================
+   Steps: the helper hides a waiting step with an inline
+   `visibility: hidden` and clears it on Next — this rule animates
+   the reveal. NEVER hide steps in your own CSS: the helper clears
+   only its inline style, and slide pictures show every step in.
+   ============================================================ */
+[data-wf-step]:not([style*='visibility: hidden']) { animation: step-in 0.4s ease-out both; }
+@keyframes step-in { from { opacity: 0.01; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+/* Timed entrance for things that arrive WITH the slide (not on a press):
+   <div class="enter" style="--d: .2">. Keep every --d ≤ 0.5: the remote's slide picture is
+   taken about a second after the slide arrives, and whatever is still on its way is missing. */
+.current .enter { animation: enter 0.5s var(--ease) both; animation-delay: calc(var(--d, 0) * 1s); }
+@keyframes enter { from { opacity: 0.01; transform: translateY(28px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+	.stage > section.current, .current .enter { animation: none; }
+}
+
+/* ============================================================
+   Type
+   ============================================================ */
+h1, h2, h3, p, figure, blockquote { margin: 0; }
+h1 { font-size: var(--fs-h1); line-height: 0.98; font-weight: 850; letter-spacing: -0.035em; }
+h2 { font-size: var(--fs-h2); line-height: 1.05; font-weight: 800; letter-spacing: -0.025em; }
+h3 { font-size: var(--fs-h3); line-height: 1.15; font-weight: 750; letter-spacing: -0.01em; }
+p, li { font-size: var(--fs-body); line-height: 1.35; color: var(--muted); }
+strong, b { color: var(--accent); font-weight: 750; }
+em { color: var(--ink); font-style: italic; }
+code { font-family: var(--mono); font-size: 0.9em; color: var(--accent); }
+.hl { color: var(--accent); }                /* the one key word of a headline */
+.kicker {
+	font: 600 28px/1 var(--mono);
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+	color: var(--accent);
+}
+.lead { font-size: 52px; line-height: 1.3; color: var(--muted); max-width: 1400px; }
+.small { font-size: var(--fs-small); }
+.source { font-size: var(--fs-tiny); color: var(--dim); }
+ul.points { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 28px; }
+ul.points li { padding-left: 56px; position: relative; color: var(--ink); }
+ul.points li::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	top: 0.6em;
+	width: 24px;
+	height: 6px;
+	border-radius: 3px;
+	background: var(--accent);
+}
+/* Each item starts with its own icon instead of the dash: <ul class="points icons"> */
+ul.points.icons li { padding-left: 0; }
+ul.points.icons li::before { display: none; }
+ul.points.icons .icon { margin-right: 18px; }
+
+/* Numbered list: <ol class="numbered"><li>…</li></ol> */
+ol.numbered { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 30px; counter-reset: n; }
+ol.numbered li { counter-increment: n; position: relative; padding-left: 104px; min-height: 72px; color: var(--ink); }
+ol.numbered li::before {
+	content: counter(n);
+	position: absolute;
+	left: 0;
+	top: 50%;
+	margin-top: -36px;
+	width: 72px;
+	height: 72px;
+	border-radius: 50%;
+	background: var(--accent);
+	color: var(--on-accent);
+	font: 850 40px/72px var(--font);
+	text-align: center;
+}
+
+/* ============================================================
+   Building blocks
+   ============================================================ */
+/* A headline block at the top of a content slide: <header class="head"><p class="kicker">…</p><h2>…</h2></header> */
+.head { display: flex; flex-direction: column; gap: 16px; }
+.top { justify-content: flex-start; }      /* section modifier: content from the top, not centred */
+.fill { flex: 1 1 auto; min-height: 0; }    /* a block that takes the rest of the slide */
+.row { display: flex; gap: var(--gap); align-items: center; }
+
+/* Icons from the inline sprite in index.html: <svg class="icon"><use href="#i-star"/></svg> */
+.icon { width: 1em; height: 1em; fill: currentColor; flex: none; display: inline-block; vertical-align: -0.12em; }
+.badge { width: 104px; height: 104px; border-radius: 28px; display: grid; place-items: center; background: var(--card); color: var(--accent); font-size: 60px; flex: none; }
+.good { color: var(--good); }
+.bad { color: var(--bad); }
+.info { color: var(--info); }
+
+/* Card */
+.card { padding: 40px 44px; border-radius: var(--radius); background: var(--card); border: 2px solid var(--line); display: flex; flex-direction: column; gap: 16px; box-shadow: var(--shadow); }
+.card h3 { color: var(--ink); }
+.card p { font-size: var(--fs-small); }
+
+/* Cards in a row: <div class="cards" style="--cols: 3"> */
+.cards { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: 32px; }
+
+/* A pill-shaped line that lands the point: <p class="callout">…</p> */
+.callout {
+	align-self: center;
+	padding: 22px 56px;
+	border-radius: 999px;
+	background: var(--accent);
+	color: var(--on-accent);
+	font-size: 52px;
+	font-weight: 850;
+	text-align: center;
+	box-shadow: var(--shadow);
+}
+.callout b, .callout strong { color: inherit; }
+.chip { display: inline-block; align-self: flex-start; padding: 10px 26px; border-radius: 999px; border: 2px solid var(--accent); color: var(--accent); font: 700 26px/1.2 var(--font); letter-spacing: 0.12em; text-transform: uppercase; }
+
+/* A picture of something physical (a drawing, a page, a photo print): a white mat, a slight tilt.
+   <figure class="paper" style="--tilt: -2deg"><img …></figure> */
+figure.paper { background: #fff; padding: 18px; border-radius: 14px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5); transform: rotate(var(--tilt, 2deg)); }
+figure.paper img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 4px; }
+/* Round crop for a face: <figure class="portrait"><img …></figure> (object-position picks the face) */
+figure.portrait { width: 520px; height: 520px; border-radius: 50%; overflow: hidden; border: 12px solid var(--ink); box-shadow: var(--shadow); flex: none; }
+figure.portrait img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Key terms / glossary: <dl class="terms"><div><dt>…</dt><dd>…</dd></div>…</dl>
+   <dd><em>Full name</em> meaning</dd> for acronyms. (No :has() / color-mix() anywhere: Safari 14.) */
+dl.terms { margin: 0; display: flex; flex-direction: column; gap: 18px; }
+dl.terms > div { display: grid; grid-template-columns: 440px 1fr; gap: 32px; align-items: center; padding: 22px 36px; border-radius: var(--radius); background: var(--card); border: 2px solid var(--line); }
+dl.terms.icons > div { grid-template-columns: 88px 400px 1fr; }  /* <dl class="terms icons"> when each row starts with a .badge */
+dl.terms dt { font-size: 54px; font-weight: 850; color: var(--ink); }
+dl.terms dd { margin: 0; font-size: 34px; line-height: 1.25; color: var(--muted); }
+dl.terms dd em { display: block; font-style: normal; font-size: 26px; font-weight: 750; letter-spacing: 0.04em; color: var(--accent); margin-bottom: 4px; }
+dl.terms .badge { width: 88px; height: 88px; font-size: 52px; }
+
+/* Timeline: <ol class="timeline"><li><b>1999</b><span>What happened</span></li>…</ol>
+   .now marks the point the talk is at. Dots are spread evenly — the gaps are not to scale. */
+ol.timeline { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); position: relative; }
+ol.timeline::before { content: ''; position: absolute; left: 0; right: 0; top: 97px; height: 6px; border-radius: 3px; background: var(--line); }
+ol.timeline li { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0; padding: 0 12px; }
+ol.timeline li b { font-size: 60px; font-weight: 850; color: var(--ink); line-height: 1; height: 76px; font-variant-numeric: tabular-nums; }
+ol.timeline li::before { content: ''; order: 1; width: 36px; height: 36px; margin: 6px 0 22px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 12px var(--accent-soft); position: relative; }
+ol.timeline li span { order: 2; font-size: 32px; line-height: 1.25; color: var(--muted); }
+ol.timeline li.now b { color: var(--accent); }
+ol.timeline li.now::before { background: var(--ink); }
+
+/* Cause → effect in boxes: <div class="flow"><div class="card">…</div><div class="card">…</div>…</div>
+   Arrows between boxes are drawn by the CSS. */
+.flow { display: flex; gap: 110px; align-items: stretch; }
+.flow > * { flex: 1 1 0; position: relative; text-align: center; align-items: center; justify-content: center; }
+.flow > * + *::before { content: ''; position: absolute; left: -84px; top: 50%; width: 58px; height: 8px; margin-top: -4px; border-radius: 4px; background: var(--accent); }
+.flow > * + *::after { content: ''; position: absolute; left: -46px; top: 50%; width: 26px; height: 26px; margin-top: -15px; border: solid var(--accent); border-width: 8px 8px 0 0; transform: rotate(45deg); }
+.flow .badge { width: 160px; height: 160px; font-size: 96px; border-radius: 40px; }
+
+/* ============================================================
+   Layouts — add a class to the <section>
+   ============================================================ */
+/* Title slide */
+.title { justify-content: flex-end; padding-bottom: 150px; }
+.title h1 { max-width: 1500px; }
+.title .byline { font-size: 36px; color: var(--muted); }
+
+/* Section divider */
+.divider { align-items: flex-start; }
+.divider .num { font: 850 300px/0.8 var(--font); color: var(--accent); letter-spacing: -0.05em; }
+
+/* Text left, picture right (put the <figure> first for picture left) */
+.split { flex-direction: row; align-items: center; gap: 96px; }
+.split > .text { flex: 1 1 0; display: flex; flex-direction: column; gap: 36px; min-width: 0; }
+.split > figure { flex: 1 1 0; margin: 0; min-width: 0; }
+.split > figure:not(.paper):not(.portrait) { height: 100%; border-radius: var(--radius); overflow: hidden; }
+.split > figure img, .split > figure video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.split > figure.paper { flex: 0 0 auto; width: 760px; height: 600px; }
+.split > figure.portrait { flex: none; }
+
+/* One big statement or number */
+.statement { align-items: center; text-align: center; }
+.statement .big { font: 850 var(--fs-display)/0.9 var(--font); letter-spacing: -0.05em; color: var(--accent); font-variant-numeric: tabular-nums; }
+.statement h2 { max-width: 1500px; }
+
+/* Quote — alone, or with a picture: class="quote split" */
+.quote blockquote { font-size: 72px; line-height: 1.18; font-weight: 700; letter-spacing: -0.015em; max-width: 1560px; color: var(--ink); text-wrap: balance; }
+.quote blockquote::before { content: '\201C'; color: var(--accent); }
+.quote blockquote::after { content: '\201D'; color: var(--accent); }
+.quote.split blockquote { font-size: 56px; }
+.quote cite { font-style: normal; font-size: 34px; font-weight: 700; color: var(--accent); }
+
+/* Full-bleed picture or video with a caption */
+.bleed { padding: 0; justify-content: flex-end; }
+.bleed > img, .bleed > video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+.bleed > .caption { position: relative; padding: 64px var(--pad); background: linear-gradient(transparent, rgba(0, 0, 0, 0.75)); }
+.bleed > .caption h3, .bleed > .caption p { color: #fff; }
+
+/* The last slide: big thanks, questions */
+.closing { align-items: center; justify-content: center; text-align: center; }
+.closing h1 { font-size: 230px; }
+.closing .ask { font-size: 96px; font-weight: 850; color: var(--accent); }
+
+/* Footer line (optional): <footer class="foot">…</footer> */
+.foot { position: absolute; left: var(--pad); right: var(--pad); bottom: 48px; display: flex; justify-content: space-between; font: 500 var(--fs-tiny)/1 var(--mono); color: var(--dim); }
+
+/* Progress bar (optional): <div class="progress"></div> as the LAST child of .stage — deck.js fills it. */
+.stage > .progress { position: absolute; left: 0; bottom: 0; height: 10px; width: calc(var(--progress, 0) * 100%); background: var(--accent); transition: width 0.6s var(--ease); }
